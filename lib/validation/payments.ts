@@ -1,0 +1,3 @@
+import { z } from "zod";
+export const createPaymentSchema = z.object({ schoolId:z.string().uuid(), studentId:z.string().uuid(), termId:z.string().uuid().optional(), amount:z.coerce.number().positive().max(100_000_000), method:z.enum(["cash","transfer"]), description:z.string().trim().max(500).optional(), proofKey:z.string().trim().max(500).optional() });
+export const reviewPaymentSchema = z.object({ paymentId:z.string().uuid(), decision:z.enum(["approved","rejected"]), rejectedReason:z.string().trim().min(3).max(500).optional() }).superRefine((value,ctx)=>{ if(value.decision === "rejected" && !value.rejectedReason)ctx.addIssue({code:"custom",message:"A reason is required when rejecting a payment.",path:["rejectedReason"]}); });

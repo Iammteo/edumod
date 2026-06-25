@@ -1,0 +1,28 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Fraunces", Georgia, serif;
+  --font-ui: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --color-ink: #10213f;
+  --color-ink-soft: #5e6b82;
+  --color-paper: #f6f9fe;
+  --color-brand-blue: #2159e8;
+  --color-brand-dark: #143a99;
+  --color-brand-soft: #e8efff;
+  --color-brand-green: #178a4c;
+  --color-border-soft: #e2e9f4;
+}
+
+@layer base {
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { @apply bg-paper font-ui text-ink antialiased; }
+  a { @apply no-underline; }
+  button, input { font: inherit; }
+  :focus-visible { outline: 3px solid rgb(33 89 232 / 35%); outline-offset: 3px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
+}
