@@ -2,13 +2,26 @@ import Image from "next/image";
 import Link from "next/link";
 
 const floatingFeatures = [
-  ["Attendance", "1,248", "Students present", "👥", "left-0 top-8 lg:left-2"],
-  ["Finance", "₦120,000", "Payment approved", "₦", "right-0 top-8 lg:right-2"],
-  ["Results", "78", "Reports ready", "▣", "left-0 top-[11.6rem] lg:left-[-0.25rem]"],
-  ["Analytics", "24%", "Attendance trend", "▥", "right-0 top-[11.6rem] lg:right-[-0.25rem]"],
-  ["Communication", "126", "Parents notified", "✉", "left-6 bottom-6 lg:left-8"],
-  ["Audit trail", "100%", "Actions logged", "◈", "right-6 bottom-6 lg:right-8"],
+  ["Attendance", "1,248", "Students present", "users", "left-0 top-8 lg:left-2"],
+  ["Finance", "₦120,000", "Payment approved", "banknote", "right-0 top-8 lg:right-2"],
+  ["Results", "78", "Reports ready", "file", "left-0 top-[11.6rem] lg:left-[-0.25rem]"],
+  ["Analytics", "24%", "Attendance trend", "trend", "right-0 top-[11.6rem] lg:right-[-0.25rem]"],
+  ["Communication", "126", "Parents notified", "mail", "left-6 bottom-6 lg:left-8"],
+  ["Audit trail", "100%", "Actions logged", "shield", "right-6 bottom-6 lg:right-8"],
 ];
+
+const featureIcons: Record<string, React.ReactNode> = {
+  users: <><path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1" /><circle cx="9" cy="7" r="3" /><path d="M22 19v-1a4 4 0 0 0-3-3.87" /><path d="M16 4.13a4 4 0 0 1 0 7.75" /></>,
+  banknote: <><rect width="20" height="12" x="2" y="6" rx="2" /><circle cx="12" cy="12" r="2.5" /><path d="M6 12h.01M18 12h.01" /></>,
+  file: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="m9 15 2 2 4-4" /></>,
+  trend: <><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></>,
+  mail: <><rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></>,
+  shield: <><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /><path d="m9 12 2 2 4-4" /></>,
+};
+
+function FeatureIcon({ name }: { name: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden className="size-[15px]">{featureIcons[name]}</svg>;
+}
 
 const comparisons = [
   ["Records in different places", "Information is scattered and hard to find.", "One connected workspace", "Your school information lives in one secure place."],
@@ -48,7 +61,7 @@ export function LandingPage() {
     <main>
       <section className="mx-auto grid w-[min(1180px,calc(100%-48px))] items-center gap-12 py-12 sm:py-[78px] lg:grid-cols-[.95fr_1.05fr] lg:gap-[52px]">
         <div>
-          <h1 className="max-w-[620px] font-display text-[clamp(44px,5vw,70px)] leading-[1.05] font-semibold tracking-[-.055em]">Modern school management, <span className="text-brand-blue">built for the future</span></h1>
+          <h1 className="max-w-[640px] font-display text-[clamp(44px,5vw,70px)] leading-[1.04] font-extrabold tracking-[-.045em]">Modern school management, <span className="text-brand-blue">built for the future</span></h1>
           <p className="mt-6 max-w-[560px] text-[15px] leading-[1.85] text-ink-soft">Education is evolving, and the schools that thrive are the ones equipped to adapt. Edumod brings together administration, finance, academics and communication in one trusted platform, empowering school leaders with the clarity, confidence and control they need to lead effectively.</p>
           <p className="mt-5 max-w-[560px] text-[15px] leading-[1.85] text-ink-soft">As the world evolves, schools deserve tools that help them evolve too.</p>
           <div className="mt-7 flex flex-wrap gap-3.5"><PrimaryButton href="#demo">Book a demo <span aria-hidden>→</span></PrimaryButton><OutlineButton href="#platform">Explore the platform <span aria-hidden>→</span></OutlineButton></div>
@@ -56,9 +69,9 @@ export function LandingPage() {
         <div className="relative isolate min-h-[500px] overflow-visible" aria-label="Edumod features overview">
           <div className="absolute inset-x-4 bottom-9 top-16 -z-10 rounded-full bg-[radial-gradient(circle,#e8f0ff_0_45%,transparent_67%)]" />
           <div className="absolute bottom-5 left-1/2 -z-10 size-[430px] -translate-x-1/2 rounded-full border border-dashed border-brand-blue/35" />
-          <Image className="absolute bottom-0 left-1/2 z-10 h-auto max-h-[465px] w-[min(365px,72%)] -translate-x-1/2 object-contain object-bottom drop-shadow-[0_22px_20px_rgba(16,33,63,.16)]" src="/images/hero-school-leader.png" alt="School leader using a laptop" width={1100} height={1467} priority />
+          <Image className="absolute bottom-0 left-1/2 z-10 h-auto max-h-[465px] w-[min(365px,72%)] -translate-x-1/2 object-contain object-bottom drop-shadow-[0_22px_20px_rgba(16,33,63,.16)]" src="/images/hero-school-leader.png" alt="School leader using a laptop" width={447} height={558} priority />
           {floatingFeatures.map(([label, value, meta, icon, position], index) => <div key={label} className={`absolute z-20 w-40 rounded-2xl border border-border-soft bg-white p-4 shadow-[0_14px_40px_rgba(16,33,63,.09)] motion-safe:animate-[float_5s_ease-in-out_infinite] ${position}`} style={{ animationDelay: `${index * .3}s` }}>
-            <div className="flex items-center gap-2 text-[11px] font-extrabold text-ink-soft"><span className="grid size-[26px] place-items-center rounded-lg bg-brand-soft text-brand-blue">{icon}</span>{label}</div><div className="mt-2.5 font-display text-[27px] leading-none font-semibold">{value}</div><div className="mt-1.5 text-[10px] text-[#8d98aa]">{meta}</div>
+            <div className="flex items-center gap-2 text-[11px] font-extrabold text-ink-soft"><span className="grid size-[26px] place-items-center rounded-lg bg-brand-soft text-brand-blue"><FeatureIcon name={icon} /></span>{label}</div><div className="mt-2.5 font-display text-[27px] leading-none font-semibold">{value}</div><div className="mt-1.5 text-[10px] text-[#8d98aa]">{meta}</div>
           </div>)}
         </div>
       </section>
