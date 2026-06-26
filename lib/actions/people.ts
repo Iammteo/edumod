@@ -12,11 +12,11 @@ import { allocateStudentId } from "@/lib/identity/allocate";
 import { generateStudentPassword } from "@/lib/identity/password";
 import { composeUsername } from "@/lib/identity/student-id";
 import { isLockedOut, recordFailure, clearFailures } from "@/lib/rate-limit";
-import { sendSchoolCodeEmail } from "@/lib/email";
+import { sendSchoolCodeEmail, sendEmail } from "@/lib/email";
 
 // Better Auth's password hasher (internal) — used so directly-inserted credential rows verify
 // correctly at sign-in. Cast because $context is not fully typed for this access.
-async function hashPassword(plain: string): Promise<string> {
+export async function hashPassword(plain: string): Promise<string> {
   const ctx = (await auth.$context) as unknown as { password: { hash(p: string): Promise<string> } };
   return ctx.password.hash(plain);
 }
@@ -43,6 +43,15 @@ async function context() {
 export async function registerOrganization(input: { schoolName: string; state: string; country: string; address: string }): Promise<{ ok: true; schoolCode: string } | { error: string }> {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) return { error: "You need to be signed in." };
+
+  // Idempotent: if this account already has an organization, return it instead of failing.
+  // This lets a half-finished signup (account created, org not) be completed on retry.
+  const [existing] = await db.select().from(memberships).where(eq(memberships.userId, session.user.id)).limit(1);
+  if (existing) {
+    const [sch] = await db.select().from(schools).where(eq(schools.id, existing.schoolId)).limit(1);
+    return { ok: true, schoolCode: sch?.schoolCode ?? "" };
+  }
+
   const name = input.schoolName.trim();
   if (!name) return { error: "School name is required." };
   const baseSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 100) || "school";
@@ -60,7 +69,8 @@ export async function registerOrganization(input: { schoolName: string; state: s
         address: input.address.trim() || null,
       }).returning();
       await db.insert(memberships).values({ schoolId: school.id, userId: session.user.id, role: "school_admin", canApprovePayments: true, canReleaseResults: true });
-      await sendSchoolCodeEmail(session.user.email, name, code);
+      // Fire-and-forget so the dashboard loads immediately; the code is also shown in the UI.
+      void sendSchoolCodeEmail(session.user.email, name, code).catch((e) => console.error("[email] school code send failed:", e));
       return { ok: true, schoolCode: code };
     } catch (e) {
       if (isUniqueViolation(e)) continue; // code or slug collided — try a new code
@@ -70,20 +80,57 @@ export async function registerOrganization(input: { schoolName: string; state: s
   return { error: "Could not allocate a unique school code right now. Please try again." };
 }
 
-// Admin invites a teacher: creates the account and emails a set-password link.
-export async function inviteStaff(input: { name: string; email: string }): Promise<Result> {
+export type StaffRole = "principal" | "vice_principal" | "teacher" | "bursar";
+export type InviteStaffInput = {
+  name: string; email: string;
+  employmentType: string; role: StaffRole; jobRole?: string; startDate?: string; staffId?: string;
+  isTeacher: boolean; isClassTeacher: boolean; assignedClass?: string;
+  subjects: string[]; teachingClasses: string[];
+  canApprovePayments: boolean;
+  permissions: Record<string, string>;
+};
+
+// Admin invites a staff member with a full role/responsibility/permission assignment, then
+// emails a set-password link. The staff profile is created as "pending" until they onboard.
+export async function inviteStaff(input: InviteStaffInput): Promise<Result> {
   const ctx = await context();
   if (!ctx?.schoolId || ctx.role !== "school_admin") return { error: "Only an admin can invite staff." };
+  const email = input.email.trim();
+  if (!input.name.trim() || !email) return { error: "Name and email are required." };
   try {
-    const res = await auth.api.signUpEmail({ body: { name: input.name.trim(), email: input.email.trim(), password: `${randomUUID()}Aa1!`, accountType: "staff" } as never });
+    const res = await auth.api.signUpEmail({ body: { name: input.name.trim(), email, password: `${randomUUID()}Aa1!`, accountType: "staff" } as never });
     const userId = (res as { user?: { id?: string } }).user?.id;
     if (!userId) return { error: "Could not create the staff account." };
-    await db.insert(memberships).values({ schoolId: ctx.schoolId, userId, role: "teacher" });
-    await db.insert(staffProfiles).values({ schoolId: ctx.schoolId, userId });
-    await auth.api.requestPasswordReset({ body: { email: input.email.trim(), redirectTo: "/reset-password" } });
+    const inviteToken = randomUUID();
+    await db.insert(memberships).values({
+      schoolId: ctx.schoolId, userId, role: input.role,
+      canApprovePayments: input.canApprovePayments,
+      canReleaseResults: input.permissions.results === "approve",
+    });
+    await db.insert(staffProfiles).values({
+      schoolId: ctx.schoolId, userId,
+      staffNo: input.staffId?.trim() || null,
+      employmentType: input.employmentType,
+      jobRole: input.jobRole?.trim() || null,
+      startDate: input.startDate || null,
+      status: "pending",
+      isTeacher: input.isTeacher,
+      isClassTeacher: input.isClassTeacher,
+      assignedClass: input.assignedClass?.trim() || null,
+      subjects: input.subjects,
+      teachingClasses: input.teachingClasses,
+      permissions: input.permissions,
+      inviteToken,
+    });
+    const link = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/onboarding?invite=${inviteToken}`;
+    void sendEmail({
+      to: email,
+      subject: `You're invited to join ${ctx.school?.name ?? "your school"} on Edumod`,
+      text: `Hi ${input.name.trim()},\n\nYou've been invited to join ${ctx.school?.name ?? "your school"} on Edumod${input.jobRole ? ` as a ${input.jobRole}` : ""}.\n\nGet started by setting your password and completing your profile:\n${link}\n\nThis link is personal to you — please don't share it.`,
+    }).catch((e) => console.error("[email] staff invite send failed:", e));
     return { ok: true };
   } catch {
-    return { error: "Could not invite this teacher — the email may already be in use." };
+    return { error: "Could not invite this staff member — the email may already be in use." };
   }
 }
 

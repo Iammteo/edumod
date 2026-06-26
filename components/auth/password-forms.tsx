@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { Logo } from "@/components/marketing/brand";
-import { requestPasswordReset, resetPassword } from "@/lib/auth/client";
+import { authClient, resetPassword } from "@/lib/auth/client";
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
@@ -39,41 +39,80 @@ function ErrorBanner({ message }: { message: string }) {
 }
 
 export function ForgotPasswordForm() {
-  const [sent, setSent] = useState(false);
+  const [step, setStep] = useState<"email" | "reset" | "done">("email");
+  const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+
+  async function sendCode(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const email = String(new FormData(e.currentTarget).get("email") || "");
+    const em = String(new FormData(e.currentTarget).get("email") || "").trim();
     setError(null);
     setBusy(true);
     try {
-      const r = await requestPasswordReset({ email, redirectTo: "/reset-password" });
-      if (r.error) throw new Error(r.error.message || "Could not send the reset link");
-      setSent(true);
+      const r = await authClient.emailOtp.sendVerificationOtp({ email: em, type: "forget-password" });
+      if (r.error) throw new Error(r.error.message || "Could not send the code");
+      setEmail(em);
+      setStep("reset");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setBusy(false);
     }
   }
+
+  async function doReset(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const otp = String(fd.get("otp") || "").trim();
+    const password = String(fd.get("password") || "");
+    if (password !== String(fd.get("confirm") || "")) { setError("Passwords do not match"); return; }
+    setError(null);
+    setBusy(true);
+    try {
+      const r = await authClient.emailOtp.resetPassword({ email, otp, password });
+      if (r.error) throw new Error(r.error.message || "Invalid or expired code");
+      setStep("done");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Shell>
-      {sent ? (
+      {step === "done" ? (
         <div className="text-center">
-          <div className="mx-auto mb-4 grid size-12 place-items-center rounded-full bg-brand-soft text-brand-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="size-6"><rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></svg></div>
-          <h1 className="font-display text-2xl font-extrabold">Check your email</h1>
-          <p className="mt-2 text-[14px] leading-relaxed text-ink-soft">If an account exists for that address, we&rsquo;ve sent a link to reset your password.</p>
-          <Link href="/login" className="mt-5 inline-block text-[13px] font-extrabold text-brand-blue hover:underline">Back to log in</Link>
+          <div className="mx-auto mb-4 grid size-12 place-items-center rounded-full bg-brand-green/10 text-brand-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="size-6"><path d="m5 13 4 4L19 7" /></svg></div>
+          <h1 className="font-display text-2xl font-extrabold">Password updated</h1>
+          <p className="mt-2 text-[14px] leading-relaxed text-ink-soft">You can now log in with your new password.</p>
+          <Link href="/login" className="mt-5 inline-block text-[13px] font-extrabold text-brand-blue hover:underline">Continue to log in</Link>
         </div>
+      ) : step === "reset" ? (
+        <>
+          <h1 className="font-display text-[26px] font-extrabold tracking-[-.02em]">Enter your code</h1>
+          <p className="mt-1.5 text-[14px] leading-relaxed text-ink-soft">We sent a 6-digit code to <strong className="text-ink">{email}</strong>. Enter it and choose a new password.</p>
+          {error && <div className="mt-4"><ErrorBanner message={error} /></div>}
+          <form onSubmit={doReset} className="mt-5 grid gap-3.5">
+            <label className="grid gap-1.5">
+              <span className="text-[12px] font-extrabold text-ink">Verification code</span>
+              <input name="otp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={6} required placeholder="••••••" className="min-h-12 rounded-[12px] border border-border-soft bg-white px-3.5 text-center text-[20px] font-extrabold tracking-[0.4em] text-ink outline-none transition focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/20" />
+            </label>
+            <Input label="New password" name="password" type="password" placeholder="At least 8 characters" autoComplete="new-password" />
+            <Input label="Confirm password" name="confirm" type="password" placeholder="Re-enter password" autoComplete="new-password" />
+            <Submit busy={busy}>Reset password</Submit>
+          </form>
+          <button type="button" onClick={() => { setStep("email"); setError(null); }} className="mt-5 inline-block text-[13px] font-bold text-ink-soft transition hover:text-brand-blue"><span aria-hidden>←</span> Use a different email</button>
+        </>
       ) : (
         <>
           <h1 className="font-display text-[26px] font-extrabold tracking-[-.02em]">Forgot your password?</h1>
-          <p className="mt-1.5 text-[14px] text-ink-soft">Enter your email and we&rsquo;ll send you a link to reset it.</p>
+          <p className="mt-1.5 text-[14px] text-ink-soft">Enter your email and we&rsquo;ll send you a 6-digit code to reset it.</p>
           {error && <div className="mt-4"><ErrorBanner message={error} /></div>}
-          <form onSubmit={onSubmit} className="mt-5 grid gap-3.5">
+          <form onSubmit={sendCode} className="mt-5 grid gap-3.5">
             <Input label="Email" name="email" type="email" placeholder="you@school.edu.ng" autoComplete="email" />
-            <Submit busy={busy}>Send reset link</Submit>
+            <Submit busy={busy}>Send code</Submit>
           </form>
           <Link href="/login" className="mt-5 inline-block text-[13px] font-bold text-ink-soft transition hover:text-brand-blue"><span aria-hidden>←</span> Back to log in</Link>
         </>

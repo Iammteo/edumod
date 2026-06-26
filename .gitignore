@@ -5,3 +5,6 @@ node_modules
 *.log
 drizzle/meta
 .env
+
+# Uploaded files (logos, etc.)
+/public/uploads/

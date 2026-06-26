@@ -4,7 +4,7 @@ import { boolean, check, date, index, integer, jsonb, numeric, pgEnum, pgTable, 
 const id = () => uuid("id").defaultRandom().primaryKey();
 const timestamps = { createdAt: timestamp("created_at", { withTimezone:true }).notNull().defaultNow(), updatedAt: timestamp("updated_at", { withTimezone:true }).notNull().defaultNow() };
 
-export const membershipRole = pgEnum("membership_role", ["school_admin","principal","bursar","teacher","parent","student"]);
+export const membershipRole = pgEnum("membership_role", ["school_admin","principal","vice_principal","bursar","teacher","parent","student"]);
 export const paymentStatus = pgEnum("payment_status", ["pending_approval","approved","rejected"]);
 export const paymentMethod = pgEnum("payment_method", ["cash","transfer"]);
 export const attendanceStatus = pgEnum("attendance_status", ["present","absent","late","excused"]);
@@ -66,7 +66,7 @@ export const studentSequences = pgTable("student_sequences", {
   ...timestamps,
 }, t=>[primaryKey({ columns:[t.schoolId, t.year] })]);
 
-export const staffProfiles = pgTable("staff_profiles", { id:id(), schoolId:uuid("school_id").notNull().references(()=>schools.id,{onDelete:"cascade"}), userId:text("user_id").notNull().references(()=>users.id,{onDelete:"cascade"}), staffNo:varchar("staff_no",{length:80}), gatePinHash:text("gate_pin_hash"), ...timestamps },t=>[unique("staff_school_user_unique").on(t.schoolId,t.userId)]);
+export const staffProfiles = pgTable("staff_profiles", { id:id(), schoolId:uuid("school_id").notNull().references(()=>schools.id,{onDelete:"cascade"}), userId:text("user_id").notNull().references(()=>users.id,{onDelete:"cascade"}), staffNo:varchar("staff_no",{length:80}), gatePinHash:text("gate_pin_hash"), employmentType:varchar("employment_type",{length:30}), jobRole:varchar("job_role",{length:60}), startDate:date("start_date"), status:varchar("status",{length:20}).notNull().default("pending"), isTeacher:boolean("is_teacher").notNull().default(false), isClassTeacher:boolean("is_class_teacher").notNull().default(false), assignedClass:varchar("assigned_class",{length:80}), subjects:jsonb("subjects").notNull().default([]), teachingClasses:jsonb("teaching_classes").notNull().default([]), permissions:jsonb("permissions").notNull().default({}), inviteToken:text("invite_token").unique(), profile:jsonb("profile").notNull().default({}), ...timestamps },t=>[unique("staff_school_user_unique").on(t.schoolId,t.userId)]);
 export const parentStudents = pgTable("parent_students", { id:id(), schoolId:uuid("school_id").notNull().references(()=>schools.id,{onDelete:"cascade"}), parentUserId:text("parent_user_id").notNull().references(()=>users.id,{onDelete:"cascade"}), studentId:uuid("student_id").notNull().references(()=>students.id,{onDelete:"cascade"}), relationship:varchar("relationship",{length:60}), ...timestamps },t=>[unique("parent_student_unique").on(t.parentUserId,t.studentId)]);
 export const auditLogs = pgTable("audit_logs", { id:id(), schoolId:uuid("school_id").notNull().references(()=>schools.id,{onDelete:"cascade"}), actorUserId:text("actor_user_id").references(()=>users.id), action:varchar("action",{length:160}).notNull(), entityType:varchar("entity_type",{length:100}).notNull(), entityId:varchar("entity_id",{length:100}), metadata:jsonb("metadata").notNull().default({}), ipAddress:varchar("ip_address",{length:64}), createdAt:timestamp("created_at",{withTimezone:true}).notNull().defaultNow() },t=>[index("audit_logs_school_created_idx").on(t.schoolId,t.createdAt)]);
 

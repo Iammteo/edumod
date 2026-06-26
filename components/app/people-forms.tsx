@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { inviteStaff, createStudent, resetStudentPassword } from "@/lib/actions/people";
+import { createStudent, resetStudentPassword } from "@/lib/actions/people";
 
 function Field({ label, name, type = "text", placeholder }: { label: string; name: string; type?: string; placeholder: string }) {
   return (
@@ -35,31 +35,6 @@ function Credentials({ title, rows, note }: { title: string; rows: [string, stri
       </div>
       <p className="mt-2 text-[10px] leading-relaxed text-ink-soft">{note}</p>
     </div>
-  );
-}
-
-export function InviteStaffForm() {
-  const [busy, setBusy] = useState(false);
-  const [ok, setOk] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = e.currentTarget;
-    const fd = new FormData(form);
-    setBusy(true); setError(null); setOk(false);
-    const r = await inviteStaff({ name: String(fd.get("name") || ""), email: String(fd.get("email") || "") });
-    setBusy(false);
-    if ("error" in r) { setError(r.error); return; }
-    setOk(true); form.reset();
-  }
-  return (
-    <form onSubmit={onSubmit} className="grid gap-3">
-      <Field label="Teacher's name" name="name" placeholder="Mr. Okafor" />
-      <Field label="Email" name="email" type="email" placeholder="okafor@school.edu.ng" />
-      <Submit busy={busy}>Send invite</Submit>
-      <Err msg={error} />
-      {ok && <p className="text-[11px] font-bold text-brand-green">Invite sent — they&rsquo;ll get a link to set their password.</p>}
-    </form>
   );
 }
 
