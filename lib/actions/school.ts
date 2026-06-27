@@ -7,18 +7,22 @@ import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { schools, memberships } from "@/db/schema";
+import { logAudit } from "@/lib/audit";
 
-async function adminSchoolId(): Promise<string | null> {
+async function adminCtx(): Promise<{ schoolId: string; userId: string } | null> {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) return null;
   const [m] = await db.select().from(memberships).where(eq(memberships.userId, session.user.id)).limit(1);
   if (!m || m.role !== "school_admin") return null;
-  return m.schoolId;
+  return { schoolId: m.schoolId, userId: session.user.id };
+}
+async function adminSchoolId(): Promise<string | null> {
+  return (await adminCtx())?.schoolId ?? null;
 }
 
-export async function updateSchoolProfile(input: { name?: string; email?: string; phone?: string; state?: string; country?: string; address?: string }): Promise<{ ok: true } | { error: string }> {
-  const schoolId = await adminSchoolId();
-  if (!schoolId) return { error: "Only an admin can update the school." };
+export async function updateSchoolProfile(input: { name?: string; email?: string; phone?: string; state?: string; country?: string; address?: string; requireApproval?: boolean }): Promise<{ ok: true } | { error: string }> {
+  const ctx = await adminCtx();
+  if (!ctx) return { error: "Only an admin can update the school." };
   const patch: Partial<typeof schools.$inferInsert> = {};
   if (input.name?.trim()) patch.name = input.name.trim();
   if (input.email?.trim()) patch.email = input.email.trim();
@@ -26,9 +30,11 @@ export async function updateSchoolProfile(input: { name?: string; email?: string
   if (input.state?.trim()) patch.state = input.state.trim();
   if (input.country?.trim()) patch.country = input.country.trim();
   if (input.address?.trim()) patch.address = input.address.trim();
+  if (typeof input.requireApproval === "boolean") patch.requireApproval = input.requireApproval;
   if (Object.keys(patch).length === 0) return { error: "Nothing to update." };
   try {
-    await db.update(schools).set({ ...patch, updatedAt: new Date() }).where(eq(schools.id, schoolId));
+    await db.update(schools).set({ ...patch, updatedAt: new Date() }).where(eq(schools.id, ctx.schoolId));
+    await logAudit({ schoolId: ctx.schoolId, actorUserId: ctx.userId, action: "settings.updated", entityType: "Settings", metadata: { fields: Object.keys(patch) } });
     return { ok: true };
   } catch {
     return { error: "Could not save your changes. Please try again." };

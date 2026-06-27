@@ -8,6 +8,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { accounts, memberships, schools, staffProfiles, users } from "@/db/schema";
 import { hashPassword } from "./people";
+import { logAudit } from "@/lib/audit";
 
 export type Invite = { name: string; email: string; schoolName: string; role: string; employmentType: string | null; jobRole: string | null; isClassTeacher: boolean; assignedClass: string | null; subjects: string[]; teachingClasses: string[] };
 
@@ -38,6 +39,7 @@ export async function acceptInvite(token: string, password: string, personal: Pe
     await db.update(accounts).set({ password: hash, updatedAt: new Date() }).where(and(eq(accounts.userId, sp.userId), eq(accounts.providerId, "credential")));
     await db.update(staffProfiles).set({ status: "active", inviteToken: null, profile: personal, updatedAt: new Date() }).where(eq(staffProfiles.id, sp.id));
     await db.update(users).set({ emailVerified: true, updatedAt: new Date() }).where(eq(users.id, sp.userId));
+    await logAudit({ schoolId: sp.schoolId, actorUserId: sp.userId, action: "staff.joined", entityType: "Staff", entityId: sp.userId, metadata: { name: user.name } });
     await auth.api.signInEmail({ body: { email: user.email, password }, headers: await headers() });
     return { ok: true };
   } catch {

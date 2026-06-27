@@ -8,3 +8,6 @@ drizzle/meta
 
 # Uploaded files (logos, etc.)
 /public/uploads/
+
+# typescript incremental build cache
+tsconfig.tsbuildinfo

@@ -118,7 +118,7 @@ export function Onboarding({ token }: { token: string }) {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-paper">
-      <header className="mx-auto flex h-[72px] w-[min(1000px,calc(100%-40px))] items-center justify-between"><Logo /><a href="#" className="rounded-[10px] border border-border-soft bg-white px-3.5 py-2 text-[12px] font-bold text-ink-soft">? Need help?</a></header>
+      <header className="mx-auto flex h-[72px] w-[min(1000px,calc(100%-40px))] items-center justify-between"><Logo /><a href="/contact" className="rounded-[10px] border border-border-soft bg-white px-3.5 py-2 text-[12px] font-bold text-ink-soft transition hover:border-brand-blue hover:text-brand-blue">? Need help?</a></header>
       <main className="mx-auto w-[min(1000px,calc(100%-40px))] pb-16">{children}</main>
     </div>
   );

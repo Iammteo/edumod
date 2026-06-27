@@ -1,7 +1,6 @@
 export const navLinks = [
   ["Why Edumod", "/#why"],
   ["Features", "/#platform"],
-  ["Pricing", "/#pricing"],
   ["About us", "/#about"],
   ["Contact us", "/contact"],
 ];

@@ -239,7 +239,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
             {isLogin && role === "student" && <>
               <div className="grid gap-3.5 sm:grid-cols-2">
                 <Field label="School code" name="schoolCode" placeholder="RCA" />
-                <Field label="Student ID" name="studentId" placeholder="STU-001" />
+                <Field label="Student ID" name="studentId" placeholder="2623844" />
               </div>
               <Field label="Password" name="password" type="password" placeholder="••••••••" autoComplete="current-password" />
             </>}
@@ -257,7 +257,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
 
           {!isLogin && <p className="mt-3 text-[12px] leading-relaxed text-ink-soft">Signing up creates an <strong className="text-ink">admin</strong> account. We&rsquo;ll email you a unique <strong className="text-ink">school code</strong> — staff and students use it to log in. Add them later from your dashboard.</p>}
 
-          <p className="mt-6 text-center text-[11px] leading-relaxed text-ink-soft">By continuing you agree to Edumod&rsquo;s <a className="underline hover:text-brand-blue" href="#">Terms</a> and <a className="underline hover:text-brand-blue" href="#">Privacy Policy</a>.</p>
+          <p className="mt-6 text-center text-[11px] leading-relaxed text-ink-soft">By continuing you agree to Edumod&rsquo;s <Link className="underline hover:text-brand-blue" href="/terms">Terms</Link> and <Link className="underline hover:text-brand-blue" href="/privacy">Privacy Policy</Link>.</p>
           </>
           )}
         </div>

@@ -18,7 +18,7 @@ export function StaffPhotoCard({ name, image }: { name: string; image: string | 
     setImg(`${r.url}?t=${Date.now()}`);
   }
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex flex-col items-center gap-3 text-center sm:flex-row sm:items-center sm:gap-4 sm:text-left">
       <div className="grid size-20 shrink-0 place-items-center overflow-hidden rounded-full border border-border-soft bg-paper">{img ? <img src={img} alt="Your photo" className="size-full object-cover" /> : <span className="font-display text-2xl font-bold text-brand-blue">{initials}</span>}</div>
       <div>
         <input ref={ref} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); }} />

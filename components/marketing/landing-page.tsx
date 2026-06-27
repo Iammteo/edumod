@@ -65,7 +65,7 @@ export function LandingPage() {
     <header className="relative z-50 mx-auto flex h-[78px] w-[min(1180px,calc(100%-48px))] items-center justify-between gap-7 border-b border-border-soft">
       <Link href="/" aria-label="Edumod home"><Logo /></Link>
       <nav className="hidden items-center gap-7 text-[13px] font-bold text-ink-soft lg:flex" aria-label="Primary navigation">{navLinks.map(([label, href]) => <a className="hover:text-brand-blue" href={href} key={href}>{label}</a>)}</nav>
-      <div className="hidden gap-3 lg:flex"><Link className="inline-flex min-h-11 items-center justify-center rounded-[10px] border border-[#b9c9ee] bg-white px-[18px] text-[13px] font-extrabold text-brand-dark" href="/login">Log in</Link><PrimaryButton href="#demo">Book a demo</PrimaryButton></div>
+      <div className="hidden gap-3 lg:flex"><Link className="inline-flex min-h-11 items-center justify-center rounded-[10px] border border-[#b9c9ee] bg-white px-[18px] text-[13px] font-extrabold text-brand-dark" href="/login">Log in</Link><PrimaryButton href="/contact">Book a demo</PrimaryButton></div>
       <details className="group relative lg:hidden [&_summary::-webkit-details-marker]:hidden">
         <summary className="grid size-11 cursor-pointer list-none place-items-center rounded-[10px] border border-[#b9c9ee] bg-white text-brand-dark transition hover:border-brand-blue" aria-label="Toggle menu">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden className="size-5">
@@ -77,7 +77,7 @@ export function LandingPage() {
           {navLinks.map(([label, href]) => <a className="rounded-lg px-3 py-2.5 text-[14px] font-bold text-ink-soft transition hover:bg-brand-soft hover:text-brand-blue" href={href} key={href}>{label}</a>)}
           <div className="mt-2 grid gap-2 border-t border-border-soft pt-3">
             <Link className="flex min-h-11 items-center justify-center rounded-[10px] border border-[#b9c9ee] bg-white px-[18px] text-[13px] font-extrabold text-brand-dark" href="/login">Log in</Link>
-            <PrimaryButton href="#demo">Book a demo</PrimaryButton>
+            <PrimaryButton href="/contact">Book a demo</PrimaryButton>
           </div>
         </div>
       </details>
@@ -89,7 +89,7 @@ export function LandingPage() {
           <h1 className="max-w-[640px] font-display text-[32px] leading-[1.1] font-extrabold tracking-[-.045em] sm:text-[clamp(44px,5vw,70px)] sm:leading-[1.04]">Modern school management, <span className="text-brand-blue">built for the future</span></h1>
           <p className="mt-6 max-w-[560px] text-[15px] leading-[1.85] text-ink-soft">Education is evolving, and the schools that thrive are the ones equipped to adapt. Edumod brings together administration, finance, academics and communication in one trusted platform, empowering school leaders with the clarity, confidence and control they need to lead effectively.</p>
           <p className="mt-5 max-w-[560px] text-[15px] leading-[1.85] text-ink-soft">As the world evolves, schools deserve tools that help them evolve too.</p>
-          <div className="mt-7 flex flex-wrap gap-3.5"><PrimaryButton href="#demo">Book a demo <span aria-hidden>→</span></PrimaryButton><OutlineButton href="#platform">Explore the platform <span aria-hidden>→</span></OutlineButton></div>
+          <div className="mt-7 flex flex-wrap gap-3.5"><PrimaryButton href="/contact">Book a demo <span aria-hidden>→</span></PrimaryButton><OutlineButton href="#platform">Explore the platform <span aria-hidden>→</span></OutlineButton></div>
         </div>
         <div className="relative isolate order-1 min-h-[380px] overflow-visible sm:order-2 sm:min-h-[500px]" aria-label="Edumod features overview">
           <div className="absolute inset-x-4 bottom-9 top-16 -z-10 rounded-full bg-[radial-gradient(circle,#e8f0ff_0_45%,transparent_67%)]" />
@@ -134,7 +134,7 @@ export function LandingPage() {
 
       <section className="py-16 sm:py-[88px]"><div className="mx-auto grid w-[min(1180px,calc(100%-48px))] items-start gap-10 lg:grid-cols-[.6fr_1.4fr] lg:gap-[46px]"><Reveal><span className="inline-flex rounded-full bg-brand-soft px-2.5 py-1.5 text-[10px] font-extrabold uppercase tracking-[.08em] text-brand-blue">FAQs</span><h2 className="mt-3.5 font-display text-[38px] font-semibold leading-[1.12] tracking-[-.03em]">Frequently asked questions</h2><p className="mt-4 text-[14px] leading-[1.8] text-ink-soft">Everything you need to know about Edumod before getting started.</p></Reveal><Reveal delay={100} className="grid gap-3">{faqs.map(([question,answer]) => <details className="group rounded-xl border border-border-soft bg-white px-[18px] transition hover:border-brand-blue/40" key={question}><summary className="relative cursor-pointer list-none py-[18px] pr-7 text-[13px] font-extrabold after:absolute after:right-0 after:top-2.5 after:text-xl after:font-medium after:text-brand-blue after:transition-transform after:content-['+'] group-open:after:rotate-45">{question}</summary><p className="pb-[17px] text-[13px] leading-7 text-ink-soft">{answer}</p></details>)}</Reveal></div></section>
     </main>
-    <footer id="about" className="mt-16 bg-[linear-gradient(115deg,#0d2f75,#174bba)] py-[46px] text-white"><div className="mx-auto grid w-[min(1180px,calc(100%-48px))] gap-7 sm:grid-cols-2 lg:grid-cols-[1.25fr_repeat(3,1fr)]"><div><Link href="/"><Logo inverse /></Link><h3 className="mt-3 font-display text-2xl leading-tight font-semibold">Modern tools for schools moving forward.</h3></div><FooterLinks heading="Product" items={["School management","Financial management","Attendance"]}/><FooterLinks heading="Company" items={["About us","Contact","Careers"]}/><FooterLinks heading="Support" items={["Help centre","Privacy policy","Terms of service"]}/></div></footer>
+    <footer id="about" className="mt-16 bg-[linear-gradient(115deg,#0d2f75,#174bba)] py-[46px] text-white"><div className="mx-auto grid w-[min(1180px,calc(100%-48px))] gap-7 sm:grid-cols-2 lg:grid-cols-[1.25fr_repeat(3,1fr)]"><div><Link href="/"><Logo inverse /></Link><h3 className="mt-3 font-display text-2xl leading-tight font-semibold">Modern tools for schools moving forward.</h3></div><FooterLinks heading="Product" items={[["School management","/#platform"],["Financial management","/#platform"],["Why Edumod","/#why"]]}/><FooterLinks heading="Company" items={[["About us","/#about"],["Contact","/contact"],["Book a demo","/contact"]]}/><FooterLinks heading="Support" items={[["Help centre","/contact"],["Privacy policy","/privacy"],["Terms of service","/terms"]]}/></div></footer>
   </>;
 }
 function CompareCell({ kind, icon, title, copy, color }: { kind: "without" | "with"; icon: string; title: string; copy: string; color?: string }) {
@@ -146,4 +146,4 @@ function CompareCell({ kind, icon, title, copy, color }: { kind: "without" | "wi
     </div>
   </div>;
 }
-function FooterLinks({ heading, items }: { heading: string; items: string[] }) { return <div><strong>{heading}</strong><ul className="mt-3 space-y-1 text-[12px] leading-6 text-blue-100">{items.map(item => <li key={item}><a href="#" className="transition hover:text-white">{item}</a></li>)}</ul></div> }
+function FooterLinks({ heading, items }: { heading: string; items: [string, string][] }) { return <div><strong>{heading}</strong><ul className="mt-3 space-y-1 text-[12px] leading-6 text-blue-100">{items.map(([label, href]) => <li key={label}><a href={href} className="transition hover:text-white">{label}</a></li>)}</ul></div> }

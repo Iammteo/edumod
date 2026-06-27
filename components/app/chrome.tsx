@@ -31,7 +31,7 @@ export function DashboardChrome({ roleLabel, school, schoolCode, term, userName,
       {open && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
-          <aside className="absolute left-0 top-0 flex h-full w-[260px] flex-col bg-ink px-4 py-[23px] motion-safe:animate-[fade-up_.2s_ease]">{side}</aside>
+          <aside className="absolute left-0 top-0 flex h-full w-[min(260px,85vw)] flex-col overflow-y-auto bg-ink px-4 py-[23px] motion-safe:animate-[fade-up_.2s_ease]">{side}</aside>
         </div>
       )}
       <div className="flex min-w-0 flex-col">
@@ -40,8 +40,8 @@ export function DashboardChrome({ roleLabel, school, schoolCode, term, userName,
           <span className="inline-flex items-center gap-2 font-display text-[18px] font-semibold"><Diamond small />Edumod</span>
           <button onClick={logout} className="rounded-[9px] border border-border-soft px-3 py-1.5 text-[12px] font-extrabold text-ink-soft transition hover:text-brand-blue">Sign out</button>
         </header>
-        <main className="p-4 sm:p-7 lg:px-[34px] lg:py-[28px]">
-          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <main className="overflow-x-hidden p-4 sm:p-7 lg:px-[34px] lg:py-[28px]">
+          <div id="overview" className="flex scroll-mt-6 flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div><h1 className="font-display text-[clamp(24px,4vw,31px)] font-semibold leading-[1.1]">{title}</h1><p className="mt-1 text-[13px] text-ink-soft">{subtitle}</p></div>
             <div className="rounded-[10px] border border-border-soft bg-white px-[13px] py-2.5 text-[11px]">Current term<br /><strong>{term}</strong></div>
           </div>
