@@ -1,9 +1,10 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { username } from "better-auth/plugins";
+import { username, emailOTP } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 import { db } from "@/lib/db";
 import * as schema from "@/db/schema";
+import { sendEmail } from "@/lib/email";
 
 // Social providers are enabled only when their credentials are present, so the
 // app runs locally without them and lights them up once keys are added.
@@ -24,8 +25,12 @@ export const auth = betterAuth({
     // wired. Set to true (and implement the email below) for production.
     requireEmailVerification: false,
     sendResetPassword: async ({ user, url }) => {
-      // Replace with the Resend or Brevo adapter. This stays server-only.
-      console.info(`Password reset for ${user.email}: ${url}`);
+      // Used by the staff-invite flow ("set your password"). Fire-and-forget for speed.
+      void sendEmail({
+        to: user.email,
+        subject: "Set your Edumod password",
+        text: `You've been added to your school on Edumod.\n\nSet your password to get started:\n${url}\n\nIf you didn't expect this, you can safely ignore this email.`,
+      }).catch((e) => console.error("[email] invite/reset send failed:", e));
     },
   },
   user: {
@@ -42,6 +47,16 @@ export const auth = betterAuth({
       minUsernameLength: 3,
       maxUsernameLength: 64,
       usernameValidator: (value: string) => /^[a-z0-9:_.-]+$/.test(value),
+    }),
+    // 6-digit email OTP — used to verify an admin's email during signup.
+    emailOTP({
+      otpLength: 6,
+      expiresIn: 60 * 10, // 10 minutes
+      sendVerificationOTP: async ({ email, otp }) => {
+        // Fire-and-forget: the OTP is already stored, so return immediately and let the email
+        // deliver in the background (Gmail SMTP can take a few seconds). The user can resend.
+        void sendEmail({ to: email, subject: "Your Edumod verification code", text: `Your Edumod verification code is ${otp}\n\nIt expires in 10 minutes. If you didn't request this, you can ignore this email.` }).catch((e) => console.error("[email] OTP send failed:", e));
+      },
     }),
     // Must be last: lets sign-in called from a server action set the session cookie.
     nextCookies(),

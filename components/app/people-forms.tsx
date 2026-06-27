@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { inviteStaff, createStudent, resetStudentPassword } from "@/lib/actions/people";
+import { createStudent, resetStudentPassword } from "@/lib/actions/people";
+import { SCHOOL_CLASSES } from "@/lib/classes";
 
 function Field({ label, name, type = "text", placeholder }: { label: string; name: string; type?: string; placeholder: string }) {
   return (
@@ -38,31 +39,6 @@ function Credentials({ title, rows, note }: { title: string; rows: [string, stri
   );
 }
 
-export function InviteStaffForm() {
-  const [busy, setBusy] = useState(false);
-  const [ok, setOk] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = e.currentTarget;
-    const fd = new FormData(form);
-    setBusy(true); setError(null); setOk(false);
-    const r = await inviteStaff({ name: String(fd.get("name") || ""), email: String(fd.get("email") || "") });
-    setBusy(false);
-    if ("error" in r) { setError(r.error); return; }
-    setOk(true); form.reset();
-  }
-  return (
-    <form onSubmit={onSubmit} className="grid gap-3">
-      <Field label="Teacher's name" name="name" placeholder="Mr. Okafor" />
-      <Field label="Email" name="email" type="email" placeholder="okafor@school.edu.ng" />
-      <Submit busy={busy}>Send invite</Submit>
-      <Err msg={error} />
-      {ok && <p className="text-[11px] font-bold text-brand-green">Invite sent — they&rsquo;ll get a link to set their password.</p>}
-    </form>
-  );
-}
-
 export function AddStudentForm() {
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<{ studentId: string; password: string } | null>(null);
@@ -72,7 +48,7 @@ export function AddStudentForm() {
     const form = e.currentTarget;
     const fd = new FormData(form);
     setBusy(true); setError(null); setCreated(null);
-    const r = await createStudent({ name: String(fd.get("name") || "") });
+    const r = await createStudent({ name: String(fd.get("name") || ""), className: String(fd.get("className") || "") });
     setBusy(false);
     if ("error" in r) { setError(r.error); return; }
     setCreated({ studentId: r.studentId, password: r.password });
@@ -81,6 +57,13 @@ export function AddStudentForm() {
   return (
     <form onSubmit={onSubmit} className="grid gap-3">
       <Field label="Student's name" name="name" placeholder="Chiamaka Nwosu" />
+      <label className="grid gap-1.5">
+        <span className="text-[11px] font-extrabold text-ink">Class</span>
+        <select name="className" defaultValue="" className="min-h-10 rounded-[10px] border border-border-soft bg-paper/60 px-3 text-[13px] text-ink outline-none transition focus:border-brand-blue focus:bg-white focus:ring-2 focus:ring-brand-blue/20">
+          <option value="">No class yet</option>
+          {SCHOOL_CLASSES.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </label>
       <Submit busy={busy}>Create student</Submit>
       <Err msg={error} />
       {created && <Credentials title="Student created — share these now" rows={[["Student ID", created.studentId], ["Password", created.password]]} note="The password is shown once. They log in with your school code + Student ID + this password." />}
@@ -105,7 +88,7 @@ export function ResetStudentPasswordForm() {
   }
   return (
     <form onSubmit={onSubmit} className="grid gap-3">
-      <Field label="Student ID" name="studentId" placeholder="26-00001" />
+      <Field label="Student ID" name="studentId" placeholder="2623844" />
       <Submit busy={busy}>Reset password</Submit>
       <Err msg={error} />
       {result && <Credentials title={`New password for ${result.studentName}`} rows={[["Password", result.password]]} note="Shown once — hand it over now." />}

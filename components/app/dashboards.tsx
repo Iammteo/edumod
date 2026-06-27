@@ -1,80 +1,107 @@
 import { DashboardChrome } from "./chrome";
-import { AddStudentForm, InviteStaffForm, ResetStudentPasswordForm } from "./people-forms";
+import { AddStudentForm, ResetStudentPasswordForm } from "./people-forms";
+import { StaffPhotoCard } from "./staff-photo";
+import type { StudentOverview, StudentFee, StudentTermResult } from "@/lib/dashboard";
 
 type SchoolProps = { userName: string; schoolName: string; schoolCode: string };
-
 type Trio = [string, string, string];
+const naira = (n: number) => `₦${n.toLocaleString()}`;
 
 function StatGrid({ stats }: { stats: Trio[] }) {
-  return <div className="my-7 grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">{stats.map(([label, value, meta]) => <div key={label} className="rounded-[14px] border border-border-soft bg-white p-[18px] transition hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(16,33,63,.08)]"><small className="font-bold text-ink-soft">{label}</small><strong className="mt-2 block font-display text-[28px] font-semibold leading-none">{value}</strong><span className="mt-2 block text-[10px] font-extrabold text-brand-green">{meta}</span></div>)}</div>;
+  return <div className="my-7 grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">{stats.map(([label, value, meta]) => <div key={label} className="rounded-[14px] border border-border-soft bg-white p-[18px] transition hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(16,33,63,.08)]"><small className="font-bold text-ink-soft">{label}</small><strong className="mt-2 block break-words font-display text-[clamp(20px,5vw,28px)] font-semibold leading-none">{value}</strong><span className="mt-2 block text-[10px] font-extrabold text-brand-green">{meta}</span></div>)}</div>;
 }
-function Panel({ title, action, children, className }: { title: string; action?: string; children: React.ReactNode; className?: string }) {
-  return <section className={`rounded-2xl border border-border-soft bg-white p-5 ${className || ""}`}><div className="mb-3.5 flex items-center justify-between"><h2 className="font-display text-[18px] font-semibold">{title}</h2>{action && <a href="#" className="text-[11px] font-extrabold text-brand-blue hover:underline">{action}</a>}</div>{children}</section>;
+function Panel({ id, title, children, className }: { id?: string; title: string; children: React.ReactNode; className?: string }) {
+  return <section id={id} className={`scroll-mt-6 rounded-2xl border border-border-soft bg-white p-5 ${className || ""}`}><div className="mb-3.5 flex items-center justify-between"><h2 className="font-display text-[18px] font-semibold">{title}</h2></div>{children}</section>;
 }
 function Activity({ items }: { items: Trio[] }) {
   return <>{items.map(([icon, t, m]) => <div key={t} className="flex gap-2.5 border-b border-border-soft py-2.5 last:border-0"><div className="grid size-7 shrink-0 place-items-center rounded-lg bg-brand-soft text-[12px] text-brand-blue">{icon}</div><div><strong className="block text-[11px]">{t}</strong><span className="text-[10px] text-ink-soft">{m}</span></div></div>)}</>;
 }
-function Rows({ items }: { items: Trio[] }) {
-  return <div className="grid gap-2.5">{items.map(([a, b, c]) => <div key={a} className="flex items-center justify-between gap-3 rounded-xl border border-border-soft px-3.5 py-2.5"><div><strong className="block text-[12px]">{a}</strong><span className="text-[10px] text-ink-soft">{b}</span></div><span className="shrink-0 text-[12px] font-extrabold text-brand-blue">{c}</span></div>)}</div>;
-}
+function Empty({ text }: { text: string }) { return <div className="grid place-items-center rounded-xl border border-dashed border-border-soft py-10 text-center text-[12px] text-ink-soft">{text}</div>; }
 
-/* ---------------- Admin ---------------- */
-export function AdminDashboard({ userName, schoolName, schoolCode }: SchoolProps) {
-  const stats: Trio[] = [["Total students", "1,248", "+28 this term"], ["Active modules", "3 / 4", "Attendance, Payments, Exams"], ["Outstanding fees", "₦3,450,000", "From 188 students"], ["Attendance today", "92%", "Present: 1,148"]];
-  const modules: [string, string][] = [["Attendance", "Take attendance and track gate check-ins."], ["Payments", "View and approve payments."], ["Exams & results", "Publish results and performance records."], ["Communication", "Reach parents and staff instantly."]];
-  const activity: Trio[] = [["₦", "Payment of ₦120,000 approved", "By Mrs. A. Johnson · 2 min ago"], ["◉", "David A. checked in at Gate 1", "Attendance · 18 min ago"], ["▣", "Term 2 fees published", "JSS 2A · 1 hr ago"], ["+", "New student added", "Chiamaka Nwosu · JSS 1B · 2 hrs ago"]];
-  return (
-    <DashboardChrome roleLabel="School Admin" school={schoolName} schoolCode={schoolCode} term="2023/2024 · Term 2" userName={userName} title={`Good morning, ${userName.split(" ")[0]} 👋`} subtitle="Here's what's happening in your school today." nav={["Overview", "Students", "Staff", "Classes", "Attendance", "Payments", "Reports", "Audit log", "Settings"]}>
-      <StatGrid stats={stats} />
-      <div className="grid gap-[18px] xl:grid-cols-[1.2fr_.8fr]">
-        <Panel title="Your modules"><div className="grid gap-3 sm:grid-cols-2">{modules.map(([name, copy]) => <div key={name} className="rounded-xl border border-border-soft p-3.5 transition hover:-translate-y-0.5 hover:shadow-[0_10px_24px_rgba(16,33,63,.07)]"><strong className="block text-[12px]">{name}</strong><p className="mt-1 text-[10px] leading-[1.5] text-ink-soft">{copy}</p><a className="mt-2 block text-[11px] font-extrabold text-brand-blue" href="#">Open →</a></div>)}</div></Panel>
-        <Panel title="Recent activity"><Activity items={activity} /></Panel>
-      </div>
-      <div className="mt-[18px] grid gap-[18px] sm:grid-cols-2 xl:grid-cols-3">
-        <Panel title="Invite a teacher"><InviteStaffForm /></Panel>
-        <Panel title="Add a student"><AddStudentForm /></Panel>
-        <Panel title="Reset student password"><ResetStudentPasswordForm /></Panel>
-      </div>
-    </DashboardChrome>
-  );
+const FEE_TONE: Record<string, string> = { paid: "bg-brand-green/10 text-brand-green", partially_paid: "bg-[#fdf6e9] text-[#b9540f]", outstanding: "bg-[#fdeeee] text-[#b3261e]" };
+const FEE_LABEL: Record<string, string> = { paid: "Paid", partially_paid: "Part paid", outstanding: "Outstanding" };
+function FeeRows({ items }: { items: StudentFee[] }) {
+  return <div className="grid gap-2.5">{items.map((f) => (
+    <div key={f.id} className="flex items-center justify-between gap-3 rounded-xl border border-border-soft px-3.5 py-2.5">
+      <div className="min-w-0"><div className="flex items-center gap-2"><strong className="truncate text-[12px]">{f.name}</strong><span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${FEE_TONE[f.status]}`}>{FEE_LABEL[f.status]}</span></div><span className="text-[10px] text-ink-soft">Issued {f.date}{f.outstanding > 0 ? ` · ${naira(f.outstanding)} due` : ""}</span></div>
+      <span className="shrink-0 text-[12px] font-extrabold text-ink">{naira(f.amount)}</span>
+    </div>
+  ))}</div>;
 }
 
 /* ---------------- Staff ---------------- */
-export function StaffDashboard({ userName, schoolName, schoolCode }: SchoolProps) {
-  const stats: Trio[] = [["My classes", "4", "JSS 1A – JSS 2B"], ["My students", "132", "Across all classes"], ["Attendance to take", "2", "Before 9:00 AM"], ["Results pending", "1", "JSS 2A · Mathematics"]];
-  const timetable: Trio[] = [["JSS 1A · Mathematics", "08:00 – 08:45 · Room 4", "Now"], ["JSS 2B · Mathematics", "09:00 – 09:45 · Room 7", "Next"], ["JSS 1B · Mathematics", "11:00 – 11:45 · Room 4", "Later"]];
-  const actions: [string, string][] = [["Take attendance", "Mark today's register"], ["Enter results", "Record assessment scores"], ["Message parents", "Send an update"], ["View students", "Class lists & profiles"]];
-  const activity: Trio[] = [["✓", "Attendance submitted", "JSS 1A · 8 min ago"], ["▣", "Scores saved as draft", "JSS 2A Maths · 1 hr ago"], ["✉", "Message sent to 24 parents", "JSS 1B · 3 hrs ago"]];
+type StaffProps = SchoolProps & { image: string | null; subjects: string[]; assignedClass: string | null; isClassTeacher: boolean; canAddStudents: boolean; classStudents: { id: string; name: string; admissionNo: string }[] };
+export function StaffDashboard({ userName, schoolName, schoolCode, image, subjects, assignedClass, isClassTeacher, canAddStudents, classStudents }: StaffProps) {
+  const stats: Trio[] = [
+    ["My class", assignedClass ?? "—", isClassTeacher ? "Class teacher" : "Subject teacher"],
+    ["Students in my class", assignedClass ? String(classStudents.length) : "—", assignedClass ? "On the register" : "No class assigned"],
+    ["My subjects", String(subjects.length), subjects.slice(0, 2).join(", ") || "None assigned yet"],
+  ];
+  const nav = ["Overview", "My class", "My profile", ...(canAddStudents ? ["Students"] : [])];
   return (
-    <DashboardChrome roleLabel="Teacher" school={schoolName} schoolCode={schoolCode} term="2023/2024 · Term 2" userName={userName} title={`Hello, ${userName.split(" ")[0]} 👋`} subtitle="Here are your classes and tasks for today." nav={["Overview", "My classes", "Attendance", "Results", "Students", "Messages", "Settings"]}>
+    <DashboardChrome roleLabel="Teacher" school={schoolName} schoolCode={schoolCode} term="2023/2024 · Term 2" userName={userName} title={`Hello, ${userName.split(" ")[0]} 👋`} subtitle="Your class, profile and tools." nav={nav}>
       <StatGrid stats={stats} />
-      <div className="grid gap-[18px] xl:grid-cols-[1.2fr_.8fr]">
-        <Panel title="Today's timetable" action="Full timetable →"><Rows items={timetable} /></Panel>
-        <Panel title="Quick actions"><div className="grid grid-cols-2 gap-3">{actions.map(([name, copy]) => <a key={name} href="#" className="rounded-xl border border-border-soft p-3.5 transition hover:-translate-y-0.5 hover:border-brand-blue/40 hover:shadow-[0_10px_24px_rgba(16,33,63,.07)]"><strong className="block text-[12px]">{name}</strong><span className="mt-1 block text-[10px] leading-[1.4] text-ink-soft">{copy}</span></a>)}</div></Panel>
+      <div className="grid gap-[18px] xl:grid-cols-[1.3fr_.7fr]">
+        <Panel id="my-class" title={assignedClass ? `My class — ${assignedClass}` : "My class"}>
+          {!assignedClass ? <Empty text="You haven't been assigned a class yet. Ask your admin to assign one, then your class register appears here." />
+            : classStudents.length === 0 ? <Empty text={`No students are in ${assignedClass} yet.`} />
+            : <div className="grid gap-1.5">{classStudents.map((s) => (
+                <div key={s.id} className="flex items-center justify-between gap-3 rounded-xl border border-border-soft px-3.5 py-2.5">
+                  <span className="text-[12px] font-bold text-ink">{s.name}</span>
+                  <code className="rounded bg-brand-soft px-1.5 py-0.5 text-[11px] font-bold text-brand-blue">{s.admissionNo}</code>
+                </div>))}</div>}
+        </Panel>
+        <Panel id="my-profile" title="My profile">
+          <StaffPhotoCard name={userName} image={image} />
+          <dl className="mt-4 grid gap-0">{[["Role", isClassTeacher ? "Class teacher" : "Teacher"], ["Assigned class", assignedClass ?? "—"], ["Subjects", subjects.join(", ") || "—"]].map(([k, v]) => <div key={k} className="flex justify-between gap-4 border-b border-border-soft py-2.5 last:border-0"><dt className="text-[12px] font-bold text-ink-soft">{k}</dt><dd className="max-w-[60%] text-right text-[12px] font-bold text-ink">{v}</dd></div>)}</dl>
+        </Panel>
       </div>
-      <div className="mt-[18px] grid gap-[18px] xl:grid-cols-3">
-        <Panel title="Recent activity"><Activity items={activity} /></Panel>
-        <Panel title="Add a student"><AddStudentForm /></Panel>
-        <Panel title="Reset student password"><ResetStudentPasswordForm /></Panel>
-      </div>
+      {canAddStudents && (
+        <div id="students" className="mt-[18px] grid scroll-mt-6 gap-[18px] sm:grid-cols-2">
+          <Panel title="Add a student"><AddStudentForm /></Panel>
+          <Panel title="Reset student password"><ResetStudentPasswordForm /></Panel>
+        </div>
+      )}
     </DashboardChrome>
   );
 }
 
 /* ---------------- Student / Parent ---------------- */
-export function StudentDashboard({ userName, schoolName, schoolCode }: SchoolProps) {
-  const stats: Trio[] = [["Attendance", "96%", "This term"], ["Average score", "78%", "+4% vs last term"], ["Outstanding fees", "₦45,000", "Due 30 Apr"], ["Next class", "10:00", "Mathematics · Room 4"]];
-  const results: Trio[] = [["Mathematics", "Continuous assessment", "82%"], ["English", "Continuous assessment", "75%"], ["Basic Science", "Continuous assessment", "80%"], ["Social Studies", "Continuous assessment", "71%"]];
-  const fees: Trio[] = [["Term 2 tuition", "Paid · 12 Feb", "₦120,000"], ["Books & materials", "Paid · 12 Feb", "₦18,000"], ["Excursion", "Outstanding", "₦45,000"]];
-  const notices: Trio[] = [["▣", "Mid-term break", "Begins 28 March · School resumes 8 April"], ["✉", "PTA meeting", "Saturday 22 March, 10:00 AM"], ["◉", "Sports day", "Friday 14 March · Main field"]];
+type StudentProps = SchoolProps & { overview: StudentOverview };
+export function StudentDashboard({ userName, schoolName, schoolCode, overview }: StudentProps) {
+  const fees = overview?.fees ?? [];
+  const stats: Trio[] = [
+    ["Outstanding fees", overview ? naira(overview.outstanding) : "—", overview && overview.outstanding > 0 ? "Action needed" : "All clear ✓"],
+    ["Total paid", overview ? naira(overview.paid) : "—", "Approved payments"],
+    ["My class", overview?.className ?? "—", overview?.admissionNo ?? ""],
+    ["Invoices", String(fees.length), fees.length ? "See below" : "None yet"],
+  ];
+  const results = overview?.results ?? [];
   return (
-    <DashboardChrome roleLabel="Student / Parent" school={schoolName} schoolCode={schoolCode} term="2023/2024 · Term 2" userName={userName} title={`Welcome back, ${userName.split(" ")[0]} 👋`} subtitle="Your results, attendance and fees at a glance." nav={["Overview", "Results", "Attendance", "Fees", "Timetable", "Notices", "Settings"]}>
+    <DashboardChrome roleLabel="Student / Parent" school={schoolName} schoolCode={schoolCode} term="2023/2024 · Term 2" userName={userName} title={`Welcome back, ${userName.split(" ")[0]} 👋`} subtitle="Your results, fees and payments at a glance." nav={["Overview", "Results", "Fees"]}>
       <StatGrid stats={stats} />
-      <div className="grid gap-[18px] xl:grid-cols-[1.2fr_.8fr]">
-        <Panel title="Recent results" action="View all →"><Rows items={results} /></Panel>
-        <Panel title="Fees" action="Pay now →"><Rows items={fees} /></Panel>
+      <div className="grid gap-[18px] xl:grid-cols-[1.3fr_.7fr]">
+        <Panel id="results" title="My results">
+          {results.length === 0 ? <Empty text="No results have been published for you yet." />
+            : <div className="grid gap-4">{results.map((t) => <ResultSheet key={t.term} t={t} />)}</div>}
+        </Panel>
+        <Panel id="fees" title="My fees">
+          {!overview ? <Empty text="No student record is linked to this account yet." /> : fees.length === 0 ? <Empty text="No fees have been issued to you yet." /> : <FeeRows items={fees} />}
+        </Panel>
       </div>
-      <div className="mt-[18px]"><Panel title="Notices"><Activity items={notices} /></Panel></div>
     </DashboardChrome>
+  );
+}
+
+const resGradeTone = (g: string) => (g === "A" ? "text-brand-green" : g === "F" ? "text-[#b3261e]" : g === "D" || g === "E" ? "text-[#b9540f]" : "text-brand-blue");
+function ResultSheet({ t }: { t: StudentTermResult }) {
+  return (
+    <div className="rounded-xl border border-border-soft p-3.5">
+      <div className="mb-2 flex items-center justify-between"><strong className="text-[12px]">{t.term}</strong><span className="text-[11px] font-bold text-ink-soft">Avg <strong className={resGradeTone(t.grade)}>{t.average}% · {t.grade}</strong></span></div>
+      <div className="overflow-x-auto"><table className="w-full min-w-[280px] text-left text-[11px]">
+        <thead><tr className="border-b border-border-soft text-[9px] uppercase tracking-wide text-ink-soft"><th className="py-1.5 font-bold">Subject</th><th className="py-1.5 text-center font-bold">CA</th><th className="py-1.5 text-center font-bold">Exam</th><th className="py-1.5 text-center font-bold">Total</th><th className="py-1.5 text-center font-bold">Grade</th></tr></thead>
+        <tbody>{t.subjects.map((s) => <tr key={s.subject} className="border-b border-border-soft last:border-0"><td className="py-1.5 font-bold text-ink">{s.subject}</td><td className="py-1.5 text-center text-ink-soft">{s.ca}</td><td className="py-1.5 text-center text-ink-soft">{s.exam}</td><td className="py-1.5 text-center font-extrabold text-ink">{s.total}</td><td className={`py-1.5 text-center font-extrabold ${resGradeTone(s.grade)}`}>{s.grade}</td></tr>)}</tbody>
+      </table></div>
+    </div>
   );
 }

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Logo } from "@/components/marketing/brand";
-import { signIn, signUp, type AccountType } from "@/lib/auth/client";
+import { authClient, signIn, signUp, type AccountType } from "@/lib/auth/client";
 import { registerOrganization, studentLogin } from "@/lib/actions/people";
 
 const ROLES: { key: AccountType; label: string; icon: React.ReactNode }[] = [
@@ -49,6 +49,9 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
   const [role, setRole] = useState<AccountType>("student");
   const [sending, setSending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Signup gains an email-OTP verification step before the org is created.
+  const [step, setStep] = useState<"form" | "otp">("form");
+  const [pending, setPending] = useState<{ email: string; schoolName: string; state: string; country: string; address: string } | null>(null);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -58,20 +61,22 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
     setSending("email");
     try {
       if (!isLogin) {
-        // Admin sign-up creates the organization.
+        // Step 1: create the admin account, then email a verification OTP.
         const name = String(fd.get("name") || "");
         const email = String(fd.get("email") || "");
         if (password !== String(fd.get("confirm") || "")) throw new Error("Passwords do not match.");
         const su = await signUp.email({ name, email, password, accountType: "admin" });
-        if (su.error) throw new Error(su.error.message || "Could not create your account");
-        const r = await registerOrganization({
-          schoolName: String(fd.get("schoolName") || ""),
-          state: String(fd.get("state") || ""),
-          country: String(fd.get("country") || ""),
-          address: String(fd.get("address") || ""),
-        });
-        if ("error" in r) throw new Error(r.error);
-        router.push("/dashboard");
+        if (su.error) {
+          // The account may already exist from a half-finished signup. Sign in (with the same
+          // password) and continue — registerOrganization is idempotent, so it completes the org.
+          const si = await signIn.email({ email, password });
+          if (si.error) throw new Error("An account with this email already exists. Please log in instead.");
+        }
+        const sent = await authClient.emailOtp.sendVerificationOtp({ email, type: "email-verification" });
+        if (sent.error) throw new Error(sent.error.message || "Could not send the verification code.");
+        setPending({ email, schoolName: String(fd.get("schoolName") || ""), state: String(fd.get("state") || ""), country: String(fd.get("country") || ""), address: String(fd.get("address") || "") });
+        setStep("otp");
+        setSending(null);
         return;
       }
       // Login
@@ -86,6 +91,36 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setSending(null);
+    }
+  }
+
+  // Step 2: verify the OTP, then create the organization.
+  async function onVerify(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!pending) return;
+    const otp = String(new FormData(e.currentTarget).get("otp") || "").trim();
+    setError(null);
+    setSending("otp");
+    try {
+      const v = await authClient.emailOtp.verifyEmail({ email: pending.email, otp });
+      if (v.error) throw new Error(v.error.message || "Invalid or expired code.");
+      const r = await registerOrganization({ schoolName: pending.schoolName, state: pending.state, country: pending.country, address: pending.address });
+      if ("error" in r) throw new Error(r.error);
+      router.push("/dashboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not verify the code. Please try again.");
+      setSending(null);
+    }
+  }
+
+  async function resendOtp() {
+    if (!pending) return;
+    setError(null);
+    setSending("resend");
+    try {
+      await authClient.emailOtp.sendVerificationOtp({ email: pending.email, type: "email-verification" });
+    } finally {
       setSending(null);
     }
   }
@@ -130,6 +165,25 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
         <Link href="/" className="absolute left-5 top-5 text-[12px] font-bold text-ink-soft transition hover:text-brand-blue sm:left-8 sm:top-8"><span aria-hidden>←</span> Back to home</Link>
         <div className="w-full max-w-[404px] motion-safe:animate-[fade-up_.6s_ease]">
           <div className="mb-7 lg:hidden"><Logo /></div>
+          {!isLogin && step === "otp" ? (
+            <div>
+              <h1 className="font-display text-[30px] font-extrabold tracking-[-.03em]">Verify your email</h1>
+              <p className="mt-1.5 text-[14px] leading-relaxed text-ink-soft">We sent a 6-digit code to <strong className="text-ink">{pending?.email}</strong>. Enter it to finish creating your school.</p>
+              {error && <div className="mt-5 rounded-[12px] border border-[#f3c2c2] bg-[#fdeeee] px-3.5 py-2.5 text-[12px] font-bold text-[#b3261e]">{error}</div>}
+              <form onSubmit={onVerify} className="mt-5 grid gap-3.5">
+                <label className="grid gap-1.5">
+                  <span className="text-[12px] font-extrabold text-ink">Verification code</span>
+                  <input name="otp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={6} required placeholder="••••••" className="min-h-12 rounded-[12px] border border-border-soft bg-white px-3.5 text-center text-[20px] font-extrabold tracking-[0.4em] text-ink outline-none transition focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/20" />
+                </label>
+                <button type="submit" disabled={!!sending} className="mt-1 inline-flex min-h-12 items-center justify-center gap-2 rounded-[12px] bg-brand-blue px-5 text-[14px] font-extrabold text-white shadow-[0_8px_18px_rgba(33,89,232,.22)] transition hover:-translate-y-0.5 hover:bg-brand-dark disabled:opacity-70">{sending === "otp" ? <Spinner light /> : "Verify & create school"}</button>
+              </form>
+              <div className="mt-4 flex items-center justify-between text-[12px]">
+                <button type="button" onClick={() => { setStep("form"); setError(null); }} className="font-bold text-ink-soft transition hover:text-brand-blue"><span aria-hidden>←</span> Back</button>
+                <button type="button" onClick={resendOtp} disabled={!!sending} className="font-extrabold text-brand-blue hover:underline disabled:opacity-60">{sending === "resend" ? "Sending…" : "Resend code"}</button>
+              </div>
+            </div>
+          ) : (
+          <>
           <h1 className="font-display text-[30px] font-extrabold tracking-[-.03em]">{isLogin ? "Welcome back" : "Create your organization"}</h1>
           <p className="mt-1.5 text-[14px] text-ink-soft">
             {isLogin ? "New school? " : "Already have an account? "}
@@ -185,7 +239,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
             {isLogin && role === "student" && <>
               <div className="grid gap-3.5 sm:grid-cols-2">
                 <Field label="School code" name="schoolCode" placeholder="RCA" />
-                <Field label="Student ID" name="studentId" placeholder="STU-001" />
+                <Field label="Student ID" name="studentId" placeholder="2623844" />
               </div>
               <Field label="Password" name="password" type="password" placeholder="••••••••" autoComplete="current-password" />
             </>}
@@ -203,7 +257,9 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
 
           {!isLogin && <p className="mt-3 text-[12px] leading-relaxed text-ink-soft">Signing up creates an <strong className="text-ink">admin</strong> account. We&rsquo;ll email you a unique <strong className="text-ink">school code</strong> — staff and students use it to log in. Add them later from your dashboard.</p>}
 
-          <p className="mt-6 text-center text-[11px] leading-relaxed text-ink-soft">By continuing you agree to Edumod&rsquo;s <a className="underline hover:text-brand-blue" href="#">Terms</a> and <a className="underline hover:text-brand-blue" href="#">Privacy Policy</a>.</p>
+          <p className="mt-6 text-center text-[11px] leading-relaxed text-ink-soft">By continuing you agree to Edumod&rsquo;s <Link className="underline hover:text-brand-blue" href="/terms">Terms</Link> and <Link className="underline hover:text-brand-blue" href="/privacy">Privacy Policy</Link>.</p>
+          </>
+          )}
         </div>
       </div>
     </div>

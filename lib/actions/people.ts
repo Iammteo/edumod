@@ -8,15 +8,16 @@ import { db } from "@/lib/db";
 import { schools, memberships, students, staffProfiles, users, accounts } from "@/db/schema";
 import { generateSchoolCode } from "@/lib/identity/school-code";
 import { SCHOOL_CODE_MAX_ATTEMPTS } from "@/lib/identity/config";
-import { allocateStudentId } from "@/lib/identity/allocate";
+import { generateAdmissionNo } from "@/lib/identity/student-id";
 import { generateStudentPassword } from "@/lib/identity/password";
+import { logAudit } from "@/lib/audit";
 import { composeUsername } from "@/lib/identity/student-id";
 import { isLockedOut, recordFailure, clearFailures } from "@/lib/rate-limit";
-import { sendSchoolCodeEmail } from "@/lib/email";
+import { sendSchoolCodeEmail, sendEmail } from "@/lib/email";
 
 // Better Auth's password hasher (internal) — used so directly-inserted credential rows verify
 // correctly at sign-in. Cast because $context is not fully typed for this access.
-async function hashPassword(plain: string): Promise<string> {
+export async function hashPassword(plain: string): Promise<string> {
   const ctx = (await auth.$context) as unknown as { password: { hash(p: string): Promise<string> } };
   return ctx.password.hash(plain);
 }
@@ -43,6 +44,15 @@ async function context() {
 export async function registerOrganization(input: { schoolName: string; state: string; country: string; address: string }): Promise<{ ok: true; schoolCode: string } | { error: string }> {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) return { error: "You need to be signed in." };
+
+  // Idempotent: if this account already has an organization, return it instead of failing.
+  // This lets a half-finished signup (account created, org not) be completed on retry.
+  const [existing] = await db.select().from(memberships).where(eq(memberships.userId, session.user.id)).limit(1);
+  if (existing) {
+    const [sch] = await db.select().from(schools).where(eq(schools.id, existing.schoolId)).limit(1);
+    return { ok: true, schoolCode: sch?.schoolCode ?? "" };
+  }
+
   const name = input.schoolName.trim();
   if (!name) return { error: "School name is required." };
   const baseSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 100) || "school";
@@ -60,7 +70,9 @@ export async function registerOrganization(input: { schoolName: string; state: s
         address: input.address.trim() || null,
       }).returning();
       await db.insert(memberships).values({ schoolId: school.id, userId: session.user.id, role: "school_admin", canApprovePayments: true, canReleaseResults: true });
-      await sendSchoolCodeEmail(session.user.email, name, code);
+      await logAudit({ schoolId: school.id, actorUserId: session.user.id, action: "school.created", entityType: "School", entityId: school.id, metadata: { name } });
+      // Fire-and-forget so the dashboard loads immediately; the code is also shown in the UI.
+      void sendSchoolCodeEmail(session.user.email, name, code).catch((e) => console.error("[email] school code send failed:", e));
       return { ok: true, schoolCode: code };
     } catch (e) {
       if (isUniqueViolation(e)) continue; // code or slug collided — try a new code
@@ -70,20 +82,58 @@ export async function registerOrganization(input: { schoolName: string; state: s
   return { error: "Could not allocate a unique school code right now. Please try again." };
 }
 
-// Admin invites a teacher: creates the account and emails a set-password link.
-export async function inviteStaff(input: { name: string; email: string }): Promise<Result> {
+export type StaffRole = "principal" | "vice_principal" | "teacher" | "bursar";
+export type InviteStaffInput = {
+  name: string; email: string;
+  employmentType: string; role: StaffRole; jobRole?: string; startDate?: string; staffId?: string;
+  isTeacher: boolean; isClassTeacher: boolean; assignedClass?: string;
+  subjects: string[]; teachingClasses: string[];
+  canApprovePayments: boolean;
+  permissions: Record<string, string>;
+};
+
+// Admin invites a staff member with a full role/responsibility/permission assignment, then
+// emails a set-password link. The staff profile is created as "pending" until they onboard.
+export async function inviteStaff(input: InviteStaffInput): Promise<Result> {
   const ctx = await context();
   if (!ctx?.schoolId || ctx.role !== "school_admin") return { error: "Only an admin can invite staff." };
+  const email = input.email.trim();
+  if (!input.name.trim() || !email) return { error: "Name and email are required." };
   try {
-    const res = await auth.api.signUpEmail({ body: { name: input.name.trim(), email: input.email.trim(), password: `${randomUUID()}Aa1!`, accountType: "staff" } as never });
+    const res = await auth.api.signUpEmail({ body: { name: input.name.trim(), email, password: `${randomUUID()}Aa1!`, accountType: "staff" } as never });
     const userId = (res as { user?: { id?: string } }).user?.id;
     if (!userId) return { error: "Could not create the staff account." };
-    await db.insert(memberships).values({ schoolId: ctx.schoolId, userId, role: "teacher" });
-    await db.insert(staffProfiles).values({ schoolId: ctx.schoolId, userId });
-    await auth.api.requestPasswordReset({ body: { email: input.email.trim(), redirectTo: "/reset-password" } });
+    const inviteToken = randomUUID();
+    await db.insert(memberships).values({
+      schoolId: ctx.schoolId, userId, role: input.role,
+      canApprovePayments: input.canApprovePayments,
+      canReleaseResults: input.permissions.results === "approve",
+    });
+    await db.insert(staffProfiles).values({
+      schoolId: ctx.schoolId, userId,
+      staffNo: input.staffId?.trim() || null,
+      employmentType: input.employmentType,
+      jobRole: input.jobRole?.trim() || null,
+      startDate: input.startDate || null,
+      status: "pending",
+      isTeacher: input.isTeacher,
+      isClassTeacher: input.isClassTeacher,
+      assignedClass: input.assignedClass?.trim() || null,
+      subjects: input.subjects,
+      teachingClasses: input.teachingClasses,
+      permissions: input.permissions,
+      inviteToken,
+    });
+    const link = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/onboarding?invite=${inviteToken}`;
+    void sendEmail({
+      to: email,
+      subject: `You're invited to join ${ctx.school?.name ?? "your school"} on Edumod`,
+      text: `Hi ${input.name.trim()},\n\nYou've been invited to join ${ctx.school?.name ?? "your school"} on Edumod${input.jobRole ? ` as a ${input.jobRole}` : ""}.\n\nGet started by setting your password and completing your profile:\n${link}\n\nThis link is personal to you — please don't share it.`,
+    }).catch((e) => console.error("[email] staff invite send failed:", e));
+    await logAudit({ schoolId: ctx.schoolId, actorUserId: ctx.userId, action: "staff.invited", entityType: "Staff", entityId: userId, metadata: { name: input.name.trim(), role: input.role } });
     return { ok: true };
   } catch {
-    return { error: "Could not invite this teacher — the email may already be in use." };
+    return { error: "Could not invite this staff member — the email may already be in use." };
   }
 }
 
@@ -91,26 +141,35 @@ export async function inviteStaff(input: { name: string; email: string }): Promi
 // password, both returned once so the creator can pass them on. Students have no email; they log
 // in via the username plugin with school code + Student ID. User + credential are inserted directly
 // (signUpEmail requires an email, which students don't have).
-export async function createStudent(input: { name: string }): Promise<{ ok: true; studentId: string; password: string } | { error: string }> {
+export async function createStudent(input: { name: string; className?: string }): Promise<{ ok: true; studentId: string; password: string } | { error: string }> {
   const ctx = await context();
   if (!ctx?.schoolId || (ctx.role !== "school_admin" && ctx.role !== "teacher")) return { error: "You are not allowed to add students." };
   if (!ctx.school?.schoolCode) return { error: "Your organization has no school code set." };
   const name = input.name.trim();
   if (!name) return { error: "Student name is required." };
+  const className = input.className?.trim() || null;
   const [firstName, ...rest] = name.split(/\s+/);
   const lastName = rest.join(" ") || firstName;
   const password = generateStudentPassword();
   const year = new Date().getFullYear();
   try {
     const hash = await hashPassword(password);
-    const { admissionNo } = await allocateStudentId(db, ctx.schoolId, year);
+    // Random, non-sequential admission number; retry until we find a free one for this school.
+    let admissionNo = "";
+    for (let i = 0; i < 12; i++) {
+      const cand = generateAdmissionNo(year);
+      const [exists] = await db.select({ id: students.id }).from(students).where(and(eq(students.schoolId, ctx.schoolId), eq(students.admissionNo, cand))).limit(1);
+      if (!exists) { admissionNo = cand; break; }
+    }
+    if (!admissionNo) return { error: "Could not allocate a student ID. Please try again." };
     const usernameValue = composeUsername(ctx.school.schoolCode, admissionNo);
     const userId = randomUUID();
     const now = new Date();
     await db.insert(users).values({ id: userId, name, email: null, emailVerified: false, accountType: "student", username: usernameValue, displayUsername: usernameValue, createdAt: now, updatedAt: now });
     await db.insert(accounts).values({ id: randomUUID(), accountId: userId, providerId: "credential", userId, password: hash, createdAt: now, updatedAt: now });
-    await db.insert(students).values({ schoolId: ctx.schoolId, admissionNo, firstName, lastName, userId });
+    await db.insert(students).values({ schoolId: ctx.schoolId, admissionNo, firstName, lastName, className, userId });
     await db.insert(memberships).values({ schoolId: ctx.schoolId, userId, role: "student" });
+    await logAudit({ schoolId: ctx.schoolId, actorUserId: ctx.userId, action: "student.added", entityType: "Student", entityId: userId, metadata: { name, admissionNo, className: className ?? null } });
     return { ok: true, studentId: admissionNo, password };
   } catch {
     return { error: "Could not create the student. Please try again." };
@@ -131,6 +190,42 @@ export async function resetStudentPassword(input: { studentId: string }): Promis
     return { ok: true, studentName: `${student.firstName} ${student.lastName}`.trim(), password };
   } catch {
     return { error: "Could not reset the password. Please try again." };
+  }
+}
+
+// Marks a staff member active / inactive / left. Keeps the account & history (use removeStaff to delete).
+export async function setStaffStatus(userId: string, status: "active" | "inactive" | "left"): Promise<{ ok: true } | { error: string }> {
+  const ctx = await context();
+  if (!ctx?.schoolId || ctx.role !== "school_admin") return { error: "Only an admin can change staff status." };
+  if (userId === ctx.userId) return { error: "You can't change your own status." };
+  const [m] = await db.select({ role: memberships.role }).from(memberships).where(and(eq(memberships.schoolId, ctx.schoolId), eq(memberships.userId, userId))).limit(1);
+  if (!m) return { error: "Staff member not found." };
+  const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, userId)).limit(1);
+  try {
+    await db.update(staffProfiles).set({ status, updatedAt: new Date() }).where(and(eq(staffProfiles.schoolId, ctx.schoolId), eq(staffProfiles.userId, userId)));
+    await logAudit({ schoolId: ctx.schoolId, actorUserId: ctx.userId, action: "staff.status_changed", entityType: "Staff", entityId: userId, metadata: { name: u?.name ?? "Staff", status } });
+    return { ok: true };
+  } catch {
+    return { error: "Could not update the status. Please try again." };
+  }
+}
+
+// Permanently removes a staff member (account, membership, profile). Blocked for admins and for
+// staff who have recorded/approved payments (keeps the financial trail intact — mark them "left" instead).
+export async function removeStaff(userId: string): Promise<{ ok: true } | { error: string }> {
+  const ctx = await context();
+  if (!ctx?.schoolId || ctx.role !== "school_admin") return { error: "Only an admin can remove staff." };
+  if (userId === ctx.userId) return { error: "You can't remove yourself." };
+  const [m] = await db.select({ role: memberships.role }).from(memberships).where(and(eq(memberships.schoolId, ctx.schoolId), eq(memberships.userId, userId))).limit(1);
+  if (!m) return { error: "Staff member not found." };
+  if (m.role === "school_admin") return { error: "You can't remove another admin." };
+  const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, userId)).limit(1);
+  try {
+    await db.delete(users).where(eq(users.id, userId)); // cascades membership + staff profile
+    await logAudit({ schoolId: ctx.schoolId, actorUserId: ctx.userId, action: "staff.removed", entityType: "Staff", entityId: userId, metadata: { name: u?.name ?? "Staff" } });
+    return { ok: true };
+  } catch {
+    return { error: "This staff member has financial records and can't be deleted. Mark them as “left” instead." };
   }
 }
 

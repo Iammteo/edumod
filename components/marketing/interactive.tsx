@@ -1,15 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { submitContact } from "@/lib/actions/contact";
 
 /* ---------- Contact form ---------- */
 export function ContactForm() {
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
-  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+  const [error, setError] = useState<string | null>(null);
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setSending(true);
-    setTimeout(() => { setSending(false); setSent(true); }, 900);
+    const fd = new FormData(e.currentTarget);
+    setSending(true); setError(null);
+    const r = await submitContact({ name: String(fd.get("name") || ""), email: String(fd.get("email") || ""), school: String(fd.get("school") || ""), phone: String(fd.get("phone") || ""), message: String(fd.get("message") || "") });
+    setSending(false);
+    if ("error" in r) { setError(r.error); return; }
+    setSent(true);
   }
   if (sent) {
     return (
@@ -37,6 +43,7 @@ export function ContactForm() {
         <span className="text-[12px] font-extrabold text-ink">How can we help?</span>
         <textarea name="message" required rows={4} placeholder="Tell us a little about your school and what you'd like to achieve." className="resize-y rounded-[12px] border border-border-soft bg-paper/60 px-3.5 py-2.5 text-[14px] text-ink outline-none transition focus:border-brand-blue focus:bg-white focus:ring-2 focus:ring-brand-blue/20" />
       </label>
+      {error && <p className="-mb-1 text-[12px] font-bold text-[#b3261e]">{error}</p>}
       <button type="submit" disabled={sending} className="mt-1 inline-flex min-h-12 items-center justify-center gap-2 rounded-[12px] bg-brand-blue px-5 text-[14px] font-extrabold text-white shadow-[0_8px_18px_rgba(33,89,232,.22)] transition hover:-translate-y-0.5 hover:bg-brand-dark disabled:opacity-70">
         {sending ? "Sending…" : <>Send message <span aria-hidden>→</span></>}
       </button>

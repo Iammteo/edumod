@@ -1,6 +1,7 @@
-import { Worker } from "bullmq";
+import { Worker, type ConnectionOptions } from "bullmq";
 import IORedis from "ioredis";
-const connection = new IORedis(process.env.REDIS_URL ?? "redis://localhost:6379", { maxRetriesPerRequest: null });
+// Cast around the duplicate-ioredis type identity (bullmq bundles its own copy of ioredis types).
+const connection = new IORedis(process.env.REDIS_URL ?? "redis://localhost:6379", { maxRetriesPerRequest: null }) as unknown as ConnectionOptions;
 
 const workers = [
   new Worker("receipt-pdfs", async job => { console.info("Generate receipt PDF", job.data); }, { connection }),
