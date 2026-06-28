@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Logo } from "@/components/marketing/brand";
 import { authClient, signIn, signUp, type AccountType } from "@/lib/auth/client";
-import { registerOrganization, studentLogin } from "@/lib/actions/people";
+import { registerOrganization, studentLogin, staffLogin } from "@/lib/actions/people";
 
 const ROLES: { key: AccountType; label: string; icon: React.ReactNode }[] = [
   { key: "student", label: "Student", icon: <><path d="M22 10 12 5 2 10l10 5 10-5Z" /><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5" /></> },
@@ -83,6 +83,20 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
       if (role === "student") {
         const r = await studentLogin({ schoolCode: String(fd.get("schoolCode") || ""), studentId: String(fd.get("studentId") || ""), password });
         if ("error" in r) throw new Error(r.error);
+        router.push("/dashboard");
+        return;
+      }
+      if (role === "staff") {
+        // Staff can sign in with their Staff ID or their email. "@" tells them apart.
+        const identifier = String(fd.get("identifier") || "").trim();
+        if (identifier && !identifier.includes("@")) {
+          const r = await staffLogin({ staffId: identifier, password });
+          if ("error" in r) throw new Error(r.error);
+          router.push("/dashboard");
+          return;
+        }
+        const res = await signIn.email({ email: identifier, password });
+        if (res.error) throw new Error(res.error.message || "Invalid credentials");
         router.push("/dashboard");
         return;
       }
@@ -244,7 +258,15 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
               <Field label="Password" name="password" type="password" placeholder="••••••••" autoComplete="current-password" />
             </>}
 
-            {isLogin && role !== "student" && <>
+            {isLogin && role === "staff" && <>
+              <Field label="Email or Staff ID" name="identifier" type="text" placeholder="you@school.edu.ng or SIS482147" autoComplete="username" />
+              <div>
+                <Field label="Password" name="password" type="password" placeholder="••••••••" autoComplete="current-password" />
+                <div className="mt-1.5 text-right"><Link href="/forgot-password" className="text-[12px] font-bold text-brand-blue hover:underline">Forgot password?</Link></div>
+              </div>
+            </>}
+
+            {isLogin && role === "admin" && <>
               <Field label="Email" name="email" type="email" placeholder="you@school.edu.ng" autoComplete="email" />
               <div>
                 <Field label="Password" name="password" type="password" placeholder="••••••••" autoComplete="current-password" />

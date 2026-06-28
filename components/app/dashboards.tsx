@@ -1,7 +1,22 @@
 import { DashboardChrome } from "./chrome";
 import { AddStudentForm, ResetStudentPasswordForm } from "./people-forms";
 import { StaffPhotoCard } from "./staff-photo";
+import { SchoolScene } from "./illustration";
+import { MyAttendanceCard, RecordResults } from "./teacher-tools";
+import { StudentAttendanceView } from "./student-attendance-view";
 import type { StudentOverview, StudentFee, StudentTermResult } from "@/lib/dashboard";
+
+function WelcomeBanner({ title, copy }: { title: string; copy: string }) {
+  return (
+    <div className="relative mb-1 mt-6 overflow-hidden rounded-2xl border border-border-soft bg-[linear-gradient(110deg,#eef3ff,#f6faff)] p-5 sm:p-6">
+      <div className="relative z-10 max-w-[70%] sm:max-w-[62%]">
+        <h2 className="font-display text-[clamp(16px,3.5vw,20px)] font-semibold leading-tight">{title}</h2>
+        <p className="mt-1 text-[12px] leading-relaxed text-ink-soft sm:text-[13px]">{copy}</p>
+      </div>
+      <SchoolScene className="pointer-events-none absolute -right-4 -top-2 h-[120%] w-[160px] opacity-90 sm:right-2 sm:w-[200px]" />
+    </div>
+  );
+}
 
 type SchoolProps = { userName: string; schoolName: string; schoolCode: string };
 type Trio = [string, string, string];
@@ -30,20 +45,35 @@ function FeeRows({ items }: { items: StudentFee[] }) {
 }
 
 /* ---------------- Staff ---------------- */
-type StaffProps = SchoolProps & { image: string | null; subjects: string[]; assignedClass: string | null; isClassTeacher: boolean; canAddStudents: boolean; classStudents: { id: string; name: string; admissionNo: string }[] };
-export function StaffDashboard({ userName, schoolName, schoolCode, image, subjects, assignedClass, isClassTeacher, canAddStudents, classStudents }: StaffProps) {
+type StaffProps = SchoolProps & { term: string; image: string | null; subjects: string[]; assignedClass: string | null; isClassTeacher: boolean; canAddStudents: boolean; classStudents: { id: string; name: string; admissionNo: string }[] };
+export function StaffDashboard({ userName, schoolName, schoolCode, term, image, subjects, assignedClass, isClassTeacher, canAddStudents, classStudents }: StaffProps) {
   const stats: Trio[] = [
     ["My class", assignedClass ?? "—", isClassTeacher ? "Class teacher" : "Subject teacher"],
     ["Students in my class", assignedClass ? String(classStudents.length) : "—", assignedClass ? "On the register" : "No class assigned"],
     ["My subjects", String(subjects.length), subjects.slice(0, 2).join(", ") || "None assigned yet"],
   ];
-  const nav = ["Overview", "My class", "My profile", ...(canAddStudents ? ["Students"] : [])];
+  const nav = ["Overview", "Attendance", "My class", ...(isClassTeacher ? ["Results"] : []), "My profile", ...(canAddStudents ? ["Students"] : [])];
   return (
-    <DashboardChrome roleLabel="Teacher" school={schoolName} schoolCode={schoolCode} term="2023/2024 · Term 2" userName={userName} title={`Hello, ${userName.split(" ")[0]} 👋`} subtitle="Your class, profile and tools." nav={nav}>
+    <DashboardChrome roleLabel="Teacher" school={schoolName} schoolCode={schoolCode} term={term} userName={userName} title={`Hello, ${userName.split(" ")[0]} 👋`} subtitle="Your attendance, class, results and profile." nav={nav}>
+      <WelcomeBanner title={`Welcome, ${userName.split(" ")[0]}!`} copy={`${schoolName} · ${term}. Clock in, mark your class and record results here.`} />
       <StatGrid stats={stats} />
-      <div className="grid gap-[18px] xl:grid-cols-[1.3fr_.7fr]">
-        <Panel id="my-class" title={assignedClass ? `My class — ${assignedClass}` : "My class"}>
-          {!assignedClass ? <Empty text="You haven't been assigned a class yet. Ask your admin to assign one, then your class register appears here." />
+      <div className="grid gap-[18px] xl:grid-cols-[1fr_1fr]">
+        <Panel id="attendance" title="My attendance"><MyAttendanceCard /></Panel>
+        <Panel id="my-profile" title="My profile">
+          <StaffPhotoCard name={userName} image={image} />
+          <dl className="mt-4 grid gap-0">{[["Role", isClassTeacher ? "Class teacher" : "Teacher"], ["Assigned class", assignedClass ?? "—"], ["Subjects", subjects.join(", ") || "—"]].map(([k, v]) => <div key={k} className="flex justify-between gap-4 border-b border-border-soft py-2.5 last:border-0"><dt className="text-[12px] font-bold text-ink-soft">{k}</dt><dd className="max-w-[60%] text-right text-[12px] font-bold text-ink">{v}</dd></div>)}</dl>
+        </Panel>
+      </div>
+
+      {isClassTeacher && assignedClass && (
+        <div id="class-attendance" className="mt-[18px] scroll-mt-6">
+          <Panel title="Mark class attendance"><StudentAttendanceView embedded /></Panel>
+        </div>
+      )}
+
+      <div id="my-class" className="mt-[18px] grid scroll-mt-6 gap-[18px] xl:grid-cols-[1fr_1fr]">
+        <Panel title={assignedClass ? `My class — ${assignedClass}` : "My class"}>
+          {!assignedClass ? <Empty text="You haven't been assigned a class yet. Ask your admin to assign one." />
             : classStudents.length === 0 ? <Empty text={`No students are in ${assignedClass} yet.`} />
             : <div className="grid gap-1.5">{classStudents.map((s) => (
                 <div key={s.id} className="flex items-center justify-between gap-3 rounded-xl border border-border-soft px-3.5 py-2.5">
@@ -51,11 +81,9 @@ export function StaffDashboard({ userName, schoolName, schoolCode, image, subjec
                   <code className="rounded bg-brand-soft px-1.5 py-0.5 text-[11px] font-bold text-brand-blue">{s.admissionNo}</code>
                 </div>))}</div>}
         </Panel>
-        <Panel id="my-profile" title="My profile">
-          <StaffPhotoCard name={userName} image={image} />
-          <dl className="mt-4 grid gap-0">{[["Role", isClassTeacher ? "Class teacher" : "Teacher"], ["Assigned class", assignedClass ?? "—"], ["Subjects", subjects.join(", ") || "—"]].map(([k, v]) => <div key={k} className="flex justify-between gap-4 border-b border-border-soft py-2.5 last:border-0"><dt className="text-[12px] font-bold text-ink-soft">{k}</dt><dd className="max-w-[60%] text-right text-[12px] font-bold text-ink">{v}</dd></div>)}</dl>
-        </Panel>
+        {isClassTeacher && <Panel id="results" title="Record results"><RecordResults classStudents={classStudents} /></Panel>}
       </div>
+
       {canAddStudents && (
         <div id="students" className="mt-[18px] grid scroll-mt-6 gap-[18px] sm:grid-cols-2">
           <Panel title="Add a student"><AddStudentForm /></Panel>
@@ -67,8 +95,8 @@ export function StaffDashboard({ userName, schoolName, schoolCode, image, subjec
 }
 
 /* ---------------- Student / Parent ---------------- */
-type StudentProps = SchoolProps & { overview: StudentOverview };
-export function StudentDashboard({ userName, schoolName, schoolCode, overview }: StudentProps) {
+type StudentProps = SchoolProps & { term: string; overview: StudentOverview };
+export function StudentDashboard({ userName, schoolName, schoolCode, term, overview }: StudentProps) {
   const fees = overview?.fees ?? [];
   const stats: Trio[] = [
     ["Outstanding fees", overview ? naira(overview.outstanding) : "—", overview && overview.outstanding > 0 ? "Action needed" : "All clear ✓"],
@@ -78,7 +106,8 @@ export function StudentDashboard({ userName, schoolName, schoolCode, overview }:
   ];
   const results = overview?.results ?? [];
   return (
-    <DashboardChrome roleLabel="Student / Parent" school={schoolName} schoolCode={schoolCode} term="2023/2024 · Term 2" userName={userName} title={`Welcome back, ${userName.split(" ")[0]} 👋`} subtitle="Your results, fees and payments at a glance." nav={["Overview", "Results", "Fees"]}>
+    <DashboardChrome roleLabel="Student / Parent" school={schoolName} schoolCode={schoolCode} term={term} userName={userName} title={`Welcome back, ${userName.split(" ")[0]} 👋`} subtitle="Your results, fees and payments at a glance." nav={["Overview", "Results", "Fees"]}>
+      <WelcomeBanner title={`Hello, ${userName.split(" ")[0]}!`} copy={`${schoolName} · ${term}. Track your results, fees and payments here in real time.`} />
       <StatGrid stats={stats} />
       <div className="grid gap-[18px] xl:grid-cols-[1.3fr_.7fr]">
         <Panel id="results" title="My results">

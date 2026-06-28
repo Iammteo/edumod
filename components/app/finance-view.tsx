@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getFinanceData, recordPayment, approvePayment, rejectPayment, createFeeStructure, type FinanceData, type Payment, type Student } from "@/lib/actions/finance";
-import { SCHOOL_CLASSES } from "@/lib/classes";
+import { useClassNames } from "@/components/app/use-classes";
 
 const naira = (n: number) => `₦${Math.round(n).toLocaleString()}`;
 const compact = (n: number) => (n >= 1_000_000 ? `₦${(n / 1_000_000).toFixed(2).replace(/\.00$/, "")}M` : n >= 1000 ? `₦${(n / 1000).toFixed(0)}k` : `₦${n}`);
@@ -26,7 +26,7 @@ export function FinanceView({ initial }: { initial?: FinanceData }) {
 
   const flash = (msg: string) => { setOk(msg); setErr(null); setTimeout(() => setOk((v) => (v === msg ? null : v)), 3500); };
 
-  if (!data) return <div className="grid place-items-center py-20 text-[13px] text-ink-soft">Loading finance…</div>;
+  if (!data) return <div className="grid place-items-center gap-3 py-20 text-[13px] text-ink-soft">{err ? <><p className="font-bold text-[#b3261e]">{err}</p><button onClick={load} className="rounded-[10px] bg-brand-blue px-4 py-2 text-[12px] font-extrabold text-white">Retry</button></> : "Loading finance…"}</div>;
   const s = data.stats;
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
@@ -54,13 +54,15 @@ export function FinanceView({ initial }: { initial?: FinanceData }) {
 
       {err && <div className="mb-4 rounded-[12px] border border-[#f3c2c2] bg-[#fdeeee] px-3.5 py-2.5 text-[12px] font-bold text-[#b3261e]">{err}</div>}
       {ok && <div className="mb-4 rounded-[12px] border border-brand-green/30 bg-brand-green/10 px-3.5 py-2.5 text-[12px] font-bold text-brand-green">{ok}</div>}
+      {!data.canRecord && <div className="mb-4 rounded-[12px] border border-border-soft bg-paper/60 px-3.5 py-2.5 text-[12px] font-bold text-ink-soft">You can view payments and approvals here. Recording payments and issuing fees is available to an <span className="text-ink">admin, bursar, principal or vice-principal</span>.</div>}
 
-      <div className="grid gap-3.5 grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3.5 lg:grid-cols-3 xl:grid-cols-5">
         {stats.map((st) => (
-          <div key={st.label} className="rounded-2xl border border-border-soft bg-white p-[18px]">
-            <div className="flex items-start justify-between gap-2"><small className="font-bold text-ink-soft">{st.label}</small><span className="grid size-9 shrink-0 place-items-center rounded-full" style={{ backgroundColor: st.bg, color: st.color }}>{st.icon}</span></div>
-            <strong className="mt-2.5 block break-words font-display text-[clamp(18px,5vw,24px)] font-semibold leading-none">{st.value}</strong>
-            <div className="mt-2 text-[11px] font-bold text-ink-soft">{st.sub}</div>
+          <div key={st.label} className="rounded-2xl border border-border-soft bg-white p-3.5 sm:p-[18px]">
+            <span className="grid size-9 place-items-center rounded-full" style={{ backgroundColor: st.bg, color: st.color }}>{st.icon}</span>
+            <strong className="mt-2.5 block break-words font-display text-[clamp(17px,5vw,24px)] font-semibold leading-none">{st.value}</strong>
+            <small className="mt-1.5 block font-bold text-ink-soft">{st.label}</small>
+            <div className="mt-1 hidden text-[11px] font-bold text-ink-soft sm:block">{st.sub}</div>
           </div>
         ))}
       </div>
@@ -193,60 +195,81 @@ function ApprovalCard({ data, onApprove, onReject, scrollAll }: { data: FinanceD
 }
 
 // ---------------------------------------------------------------------------- Issue fees
+type ItemDraft = { name: string; amount: string; mandatory: boolean };
 function IssueFeesCard({ data, onDone, onErr }: { data: FinanceData; onDone: (n: number) => void; onErr: (e: string) => void }) {
-  const [feeType, setFeeType] = useState("Tuition");
-  const [custom, setCustom] = useState(false);
-  const [customName, setCustomName] = useState("");
+  const [billName, setBillName] = useState("");
   const [term, setTerm] = useState(TERMS[1]);
-  const [amount, setAmount] = useState("");
+  const [items, setItems] = useState<ItemDraft[]>([{ name: "Tuition", amount: "", mandatory: true }]);
   const [classes, setClasses] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const allClassNames = useClassNames();
 
   const countMap = useMemo(() => new Map(data.classCounts.map((c) => [c.className, c.count])), [data.classCounts]);
   const invoiced = classes.length === 0 ? data.students.length : classes.reduce((n, c) => n + (countMap.get(c) ?? 0), 0);
-  const total = (Number(amount) || 0) * invoiced;
-  const remaining = SCHOOL_CLASSES.filter((c) => !classes.includes(c));
-  const name = custom ? customName : feeType;
+  const perStudent = items.reduce((n, it) => n + (Number(it.amount) || 0), 0);
+  const mandatoryPer = items.filter((it) => it.mandatory).reduce((n, it) => n + (Number(it.amount) || 0), 0);
+  const optionalPer = perStudent - mandatoryPer;
+  const remaining = allClassNames.filter((c) => !classes.includes(c));
+  const setItem = (i: number, patch: Partial<ItemDraft>) => setItems((arr) => arr.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) { onErr("Give the fee a name."); return; }
-    if (!(Number(amount) > 0)) { onErr("Enter a valid amount."); return; }
+    const name = billName.trim() || term;
+    const payload = items.map((it) => ({ name: it.name.trim(), amount: Number(it.amount), mandatory: it.mandatory })).filter((it) => it.name && it.amount > 0);
+    if (payload.length === 0) { onErr("Add at least one fee item with an amount."); return; }
     setBusy(true);
-    const r = await createFeeStructure({ name: name.trim(), termLabel: term, amount: Number(amount), classes });
+    const r = await createFeeStructure({ name, termLabel: term, classes, items: payload });
     setBusy(false);
     if ("error" in r) { onErr(r.error); return; }
-    setAmount(""); setClasses([]); setCustom(false); setCustomName(""); setFeeType("Tuition");
+    setBillName(""); setItems([{ name: "Tuition", amount: "", mandatory: true }]); setClasses([]);
     onDone(r.issued);
   }
 
   return (
     <section id="issue-card" className="rounded-2xl border border-border-soft bg-white p-5">
-      <h2 className="mb-4 flex items-center gap-2 font-display text-[16px] font-semibold"><span className="text-brand-green"><Doc /></span>Issue fees / create invoice</h2>
+      <h2 className="mb-4 flex items-center gap-2 font-display text-[16px] font-semibold"><span className="text-brand-green"><Doc /></span>Issue fees / create bill</h2>
       <form onSubmit={submit} className="grid gap-3.5">
-        <div className="flex flex-wrap gap-1.5">
-          {FEE_TYPES.map((t) => <button type="button" key={t} onClick={() => { setFeeType(t); setCustom(false); }} className={`rounded-full border px-3 py-1.5 text-[11px] font-bold transition ${!custom && feeType === t ? "border-brand-blue bg-brand-blue text-white" : "border-border-soft bg-white text-ink-soft hover:border-brand-blue hover:text-brand-blue"}`}>{t}</button>)}
-          <button type="button" onClick={() => setCustom(true)} className={`grid size-7 place-items-center rounded-full border text-[13px] font-bold transition ${custom ? "border-brand-blue bg-brand-blue text-white" : "border-border-soft bg-white text-ink-soft hover:border-brand-blue"}`}>+</button>
-        </div>
-        {custom && <input value={customName} onChange={(e) => setCustomName(e.target.value)} placeholder="Custom fee name (e.g. Excursion)" className={inputCls} autoFocus />}
         <div className="grid gap-3.5 sm:grid-cols-2">
+          <Field label="Bill name"><input value={billName} onChange={(e) => setBillName(e.target.value)} placeholder="e.g. Term 1 fees" className={inputCls} /></Field>
           <Field label="Term"><select value={term} onChange={(e) => setTerm(e.target.value)} className={selectCls}>{TERMS.map((t) => <option key={t}>{t}</option>)}</select></Field>
-          <Field label="Amount (₦)"><input value={amount} onChange={(e) => setAmount(e.target.value)} type="number" min="1" step="0.01" required placeholder="120000" className={inputCls} /></Field>
         </div>
+
+        <div>
+          <div className="mb-1.5 flex items-center justify-between"><span className="text-[11px] font-extrabold text-ink">Fee breakdown</span><span className="text-[10px] text-ink-soft">Mark each item mandatory or optional</span></div>
+          <datalist id="fee-item-names">{FEE_TYPES.map((t) => <option key={t} value={t} />)}</datalist>
+          <div className="grid gap-2">
+            {items.map((it, i) => (
+              <div key={i} className="grid gap-2 rounded-[10px] border border-border-soft bg-paper/40 p-2">
+                <input list="fee-item-names" value={it.name} onChange={(e) => setItem(i, { name: e.target.value })} placeholder="Item (e.g. Excursion)" className="min-h-9 w-full rounded-[8px] border border-border-soft bg-white px-2.5 text-[12px] outline-none focus:border-brand-blue" />
+                <div className="flex items-center gap-2">
+                  <input value={it.amount} onChange={(e) => setItem(i, { amount: e.target.value })} type="number" min="0" step="0.01" placeholder="Amount ₦" className="min-h-9 flex-1 rounded-[8px] border border-border-soft bg-white px-2.5 text-[12px] outline-none focus:border-brand-blue" />
+                  <button type="button" onClick={() => setItem(i, { mandatory: !it.mandatory })} className={`min-h-9 shrink-0 rounded-full px-3 text-[10px] font-extrabold transition ${it.mandatory ? "bg-brand-blue text-white" : "bg-[#fdf6e9] text-[#b9540f]"}`}>{it.mandatory ? "Mandatory" : "Optional"}</button>
+                  <button type="button" onClick={() => setItems((a) => a.length > 1 ? a.filter((_, idx) => idx !== i) : a)} disabled={items.length === 1} className="grid size-9 shrink-0 place-items-center rounded-[8px] text-ink-soft hover:bg-paper disabled:opacity-30" title="Remove">✕</button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button type="button" onClick={() => setItems((a) => [...a, { name: "", amount: "", mandatory: true }])} className="mt-2 text-[12px] font-extrabold text-brand-blue hover:underline">+ Add fee item</button>
+        </div>
+
         <Field label="Classes">
           <div className="flex flex-wrap items-center gap-1.5 rounded-[10px] border border-border-soft bg-paper/50 p-2">
-            {classes.length === 0 && <span className="px-1 text-[11px] text-ink-soft">No class selected — bills all students</span>}
-            {classes.map((c) => <span key={c} className="inline-flex items-center gap-1 rounded-full bg-brand-soft px-2.5 py-1 text-[11px] font-bold text-brand-blue">{c}<button type="button" onClick={() => setClasses((v) => v.filter((x) => x !== c))} className="text-brand-blue/70 hover:text-brand-blue">✕</button></span>)}
+            {classes.length === 0
+              ? <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-blue px-2.5 py-1 text-[11px] font-extrabold text-white">🏫 All classes · every student</span>
+              : classes.map((c) => <span key={c} className="inline-flex items-center gap-1 rounded-full bg-brand-soft px-2.5 py-1 text-[11px] font-bold text-brand-blue">{c}<button type="button" onClick={() => setClasses((v) => v.filter((x) => x !== c))} className="text-brand-blue/70 hover:text-brand-blue">✕</button></span>)}
             {remaining.length > 0 && <select value="" onChange={(e) => { if (e.target.value) setClasses((v) => [...v, e.target.value]); }} className="ml-auto rounded-md border border-border-soft bg-white px-2 py-1 text-[11px] font-bold text-ink-soft outline-none"><option value="">+ Add class</option>{remaining.map((c) => <option key={c} value={c}>{c}</option>)}</select>}
+            {classes.length > 0 && <button type="button" onClick={() => setClasses([])} className="text-[11px] font-extrabold text-ink-soft underline hover:text-ink">All classes</button>}
           </div>
+          <p className="mt-1 px-1 text-[10px] text-ink-soft">Add classes to bill only those, or leave as <strong>All classes</strong> to bill every student.</p>
         </Field>
+
         <div className="rounded-[12px] border border-border-soft bg-paper/50 p-3.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5"><span className="grid size-9 place-items-center rounded-full bg-brand-soft text-brand-blue"><Users /></span><div><div className="text-[12px] font-extrabold text-ink">{classes.length === 0 ? "All classes" : `${classes.length} class${classes.length === 1 ? "" : "es"} selected`}</div><div className="text-[11px] text-ink-soft">{invoiced.toLocaleString()} student{invoiced === 1 ? "" : "s"} will be invoiced</div></div></div>
-            <div className="text-right"><div className="text-[10px] font-bold uppercase tracking-wide text-ink-soft">Total amount</div><div className="font-display text-[18px] font-bold text-brand-green">{naira(total)}</div></div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5"><span className="grid size-9 place-items-center rounded-full bg-brand-soft text-brand-blue"><Users /></span><div><div className="text-[12px] font-extrabold text-ink">{naira(perStudent)} / student</div><div className="text-[11px] text-ink-soft">{naira(mandatoryPer)} mandatory{optionalPer > 0 ? ` · ${naira(optionalPer)} optional` : ""} · {invoiced.toLocaleString()} student{invoiced === 1 ? "" : "s"}</div></div></div>
+            <div className="text-right"><div className="text-[10px] font-bold uppercase tracking-wide text-ink-soft">Total to issue</div><div className="font-display text-[18px] font-bold text-brand-green">{naira(perStudent * invoiced)}</div></div>
           </div>
         </div>
-        <button type="submit" disabled={busy || invoiced === 0} className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[10px] bg-brand-blue px-5 text-[13px] font-extrabold text-white transition hover:bg-brand-dark disabled:opacity-60"><Doc />{busy ? "Issuing…" : "Create and issue invoices"}</button>
+        <button type="submit" disabled={busy || invoiced === 0} className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[10px] bg-brand-blue px-5 text-[13px] font-extrabold text-white transition hover:bg-brand-dark disabled:opacity-60"><Doc />{busy ? "Issuing…" : "Create and issue bill"}</button>
         {invoiced === 0 && <p className="-mt-1 text-center text-[11px] text-ink-soft">No students in the selected class(es) yet.</p>}
       </form>
     </section>

@@ -31,11 +31,11 @@ export async function getClassFinance(): Promise<ClassFinance | { error: string 
   const c = await ctx();
   if (!c?.canView) return { error: "Not authorised." };
   const [invByClass, paidByClass, countByClass, lastByClass, invByStu, paidByStu] = await Promise.all([
-    db.select({ cn: students.className, total: sql<string>`coalesce(sum(${invoices.amount}),0)` }).from(invoices).innerJoin(students, eq(students.id, invoices.studentId)).where(eq(invoices.schoolId, c.schoolId)).groupBy(students.className),
+    db.select({ cn: students.className, total: sql<string>`coalesce(sum(${invoices.amount}),0)` }).from(invoices).innerJoin(students, eq(students.id, invoices.studentId)).where(and(eq(invoices.schoolId, c.schoolId), eq(invoices.mandatory, true))).groupBy(students.className),
     db.select({ cn: students.className, total: sql<string>`coalesce(sum(${payments.amount}),0)` }).from(payments).innerJoin(students, eq(students.id, payments.studentId)).where(and(eq(payments.schoolId, c.schoolId), eq(payments.status, "approved"))).groupBy(students.className),
     db.select({ cn: students.className, count: sql<number>`count(*)::int` }).from(students).where(eq(students.schoolId, c.schoolId)).groupBy(students.className),
     db.select({ cn: students.className, last: sql<string>`max(${payments.createdAt})` }).from(payments).innerJoin(students, eq(students.id, payments.studentId)).where(and(eq(payments.schoolId, c.schoolId), eq(payments.status, "approved"))).groupBy(students.className),
-    db.select({ sid: invoices.studentId, total: sql<string>`coalesce(sum(${invoices.amount}),0)` }).from(invoices).where(eq(invoices.schoolId, c.schoolId)).groupBy(invoices.studentId),
+    db.select({ sid: invoices.studentId, total: sql<string>`coalesce(sum(${invoices.amount}),0)` }).from(invoices).where(and(eq(invoices.schoolId, c.schoolId), eq(invoices.mandatory, true))).groupBy(invoices.studentId),
     db.select({ sid: payments.studentId, total: sql<string>`coalesce(sum(${payments.amount}),0)` }).from(payments).where(and(eq(payments.schoolId, c.schoolId), eq(payments.status, "approved"))).groupBy(payments.studentId),
   ]);
   const key = (cn: string | null) => cn || "Unassigned";
@@ -64,7 +64,7 @@ export async function getClassFinance(): Promise<ClassFinance | { error: string 
   };
 }
 
-export type ClassFeeItem = { description: string; amount: number };
+export type ClassFeeItem = { description: string; amount: number; mandatory: boolean };
 export type ClassStudentRow = { id: string; name: string; guardian: string; guardianPhone: string; paid: number; outstanding: number; status: "cleared" | "partial" | "unpaid"; lastPayment: string | null };
 export type ClassDetail = {
   className: string; students: number; expected: number; collected: number; outstanding: number;
@@ -81,7 +81,7 @@ export async function getOutstandingStudents(): Promise<OutstandingStudent[] | {
   const ids = studs.map((s) => s.id);
   if (ids.length === 0) return [];
   const [invByStu, paidByStu] = await Promise.all([
-    db.select({ sid: invoices.studentId, total: sql<string>`coalesce(sum(${invoices.amount}),0)` }).from(invoices).where(inArray(invoices.studentId, ids)).groupBy(invoices.studentId),
+    db.select({ sid: invoices.studentId, total: sql<string>`coalesce(sum(${invoices.amount}),0)` }).from(invoices).where(and(inArray(invoices.studentId, ids), eq(invoices.mandatory, true))).groupBy(invoices.studentId),
     db.select({ sid: payments.studentId, total: sql<string>`coalesce(sum(${payments.amount}),0)` }).from(payments).where(and(inArray(payments.studentId, ids), eq(payments.status, "approved"))).groupBy(payments.studentId),
   ]);
   const inv = new Map(invByStu.map((r) => [r.sid, Number(r.total)])), paid = new Map(paidByStu.map((r) => [r.sid, Number(r.total)]));
@@ -103,10 +103,10 @@ export async function getClassDetail(className: string): Promise<ClassDetail | {
   if (ids.length === 0) return { className, students: 0, expected: 0, collected: 0, outstanding: 0, feeItems: [], studentRows: [] };
 
   const [invByStu, paidByStu, lastByStu, feeRows] = await Promise.all([
-    db.select({ sid: invoices.studentId, total: sql<string>`coalesce(sum(${invoices.amount}),0)` }).from(invoices).where(inArray(invoices.studentId, ids)).groupBy(invoices.studentId),
+    db.select({ sid: invoices.studentId, total: sql<string>`coalesce(sum(${invoices.amount}),0)` }).from(invoices).where(and(inArray(invoices.studentId, ids), eq(invoices.mandatory, true))).groupBy(invoices.studentId),
     db.select({ sid: payments.studentId, total: sql<string>`coalesce(sum(${payments.amount}),0)` }).from(payments).where(and(inArray(payments.studentId, ids), eq(payments.status, "approved"))).groupBy(payments.studentId),
     db.select({ sid: payments.studentId, last: sql<string>`max(${payments.createdAt})` }).from(payments).where(and(inArray(payments.studentId, ids), eq(payments.status, "approved"))).groupBy(payments.studentId),
-    db.select({ description: invoices.description, total: sql<string>`coalesce(sum(${invoices.amount}),0)` }).from(invoices).where(inArray(invoices.studentId, ids)).groupBy(invoices.description),
+    db.select({ description: invoices.description, mandatory: invoices.mandatory, total: sql<string>`coalesce(sum(${invoices.amount}),0)` }).from(invoices).where(inArray(invoices.studentId, ids)).groupBy(invoices.description, invoices.mandatory),
   ]);
   const invMap = new Map(invByStu.map((r) => [r.sid, Number(r.total)]));
   const paidMap = new Map(paidByStu.map((r) => [r.sid, Number(r.total)]));
@@ -125,7 +125,7 @@ export async function getClassDetail(className: string): Promise<ClassDetail | {
 
   return {
     className, students: studs.length, expected, collected, outstanding: Math.max(0, expected - collected),
-    feeItems: feeRows.map((r) => ({ description: r.description || "School fees", amount: Number(r.total) })).sort((a, b) => b.amount - a.amount),
+    feeItems: feeRows.map((r) => ({ description: r.description || "School fees", amount: Number(r.total), mandatory: r.mandatory })).sort((a, b) => b.amount - a.amount),
     studentRows,
   };
 }

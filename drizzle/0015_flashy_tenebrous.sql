@@ -1,0 +1,1 @@
+ALTER TYPE "public"."attendance_method" ADD VALUE 'self_portal';

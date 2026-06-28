@@ -18,17 +18,20 @@ export type AdminOverview = {
   outstanding: number;
   sections: { jss: number; sss: number; primary: number; other: number };
   series: { label: string; value: number }[];
+  topPerformers: { name: string; className: string | null; average: number }[];
+  classList: { className: string; count: number }[];
 };
 
 export async function adminOverview(schoolId: string): Promise<AdminOverview> {
   const now = new Date();
   const sixAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
-  const [collectedRow, invoiceRows, paidRows, classRows, seriesRows] = await Promise.all([
+  const [collectedRow, invoiceRows, paidRows, classRows, seriesRows, resultRows] = await Promise.all([
     db.select({ total: sql<string>`coalesce(sum(${payments.amount}),0)` }).from(payments).where(and(eq(payments.schoolId, schoolId), eq(payments.status, "approved"))),
     db.select({ id: invoices.id, amount: invoices.amount }).from(invoices).where(eq(invoices.schoolId, schoolId)),
     db.select({ invoiceId: payments.invoiceId, paid: sql<string>`sum(${payments.amount})` }).from(payments).where(and(eq(payments.schoolId, schoolId), eq(payments.status, "approved"))).groupBy(payments.invoiceId),
     db.select({ className: students.className, count: sql<number>`count(*)::int` }).from(students).where(eq(students.schoolId, schoolId)).groupBy(students.className),
     db.select({ m: sql<string>`to_char(date_trunc('month', ${payments.createdAt}), 'YYYY-MM')`, total: sql<string>`sum(${payments.amount})` }).from(payments).where(and(eq(payments.schoolId, schoolId), eq(payments.status, "approved"), gte(payments.createdAt, sixAgo))).groupBy(sql`date_trunc('month', ${payments.createdAt})`),
+    db.select({ studentId: studentResults.studentId, fn: students.firstName, ln: students.lastName, cn: students.className, ca: studentResults.ca, exam: studentResults.exam }).from(studentResults).innerJoin(students, eq(students.id, studentResults.studentId)).where(eq(studentResults.schoolId, schoolId)),
   ]);
 
   const collected = Number(collectedRow[0]?.total ?? 0);
@@ -48,7 +51,17 @@ export async function adminOverview(schoolId: string): Promise<AdminOverview> {
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     series.push({ label: d.toLocaleString("en", { month: "short" }), value: seriesMap.get(key) ?? 0 });
   }
-  return { collected, outstanding, sections, series };
+
+  // Top performers: average across all recorded results per student.
+  const perf = new Map<string, { name: string; className: string | null; sum: number; n: number }>();
+  for (const r of resultRows) {
+    const e = perf.get(r.studentId) ?? { name: `${r.fn} ${r.ln}`.trim(), className: r.cn, sum: 0, n: 0 };
+    e.sum += r.ca + r.exam; e.n += 1; perf.set(r.studentId, e);
+  }
+  const topPerformers = [...perf.values()].map((e) => ({ name: e.name, className: e.className, average: Math.round((e.sum / e.n) * 10) / 10 })).sort((a, b) => b.average - a.average).slice(0, 5);
+  const classList = classRows.filter((r) => r.className).map((r) => ({ className: r.className as string, count: Number(r.count) })).sort((a, b) => a.className.localeCompare(b.className));
+
+  return { collected, outstanding, sections, series, topPerformers, classList };
 }
 
 export type StudentFee = { id: string; name: string; status: string; amount: number; outstanding: number; date: string };

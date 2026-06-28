@@ -6,9 +6,11 @@ import { headers } from "next/headers";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { invoices, memberships, payments, students, studentResults, refundRequests } from "@/db/schema";
+import { accounts, invoices, memberships, payments, schools, students, studentResults, refundRequests, users } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
 import { gradeFor } from "@/lib/grading";
+import { generateStudentPassword } from "@/lib/identity/password";
+import { hashPassword } from "./people";
 
 async function ctx() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -31,16 +33,17 @@ export type StudentBio = {
 export type SubjectResult = { subject: string; ca: number; exam: number; total: number; grade: string };
 export type TermResult = { term: string; subjects: SubjectResult[]; total: number; average: number; grade: string; remark: string; position: number | null; classSize: number };
 export type LedgerEntry = { date: string; description: string; method: string | null; amount: number; balance: number; receiptNo: string | null; kind: "invoice" | "payment" };
-export type InvoiceItem = { description: string; amount: number; status: string; date: string };
+export type InvoiceItem = { description: string; amount: number; status: string; date: string; mandatory: boolean };
 export type StudentPayment = { id: string; amount: number; method: string; status: string; date: string; receiptKey: string | null; receiptNo: string; description: string | null };
 export type StudentProfile = {
   id: string; name: string; admissionNo: string; className: string | null; photoKey: string | null; enrolledOn: string;
   bio: StudentBio;
   summary: { average: number | null; position: number | null; classSize: number };
-  financial: { invoiced: number; paid: number; outstanding: number; credit: number; nextDue: string | null; payments: StudentPayment[]; invoiceItems: InvoiceItem[]; ledger: LedgerEntry[]; refunds: RefundRow[] };
+  financial: { invoiced: number; paid: number; outstanding: number; optionalDue: number; credit: number; nextDue: string | null; payments: StudentPayment[]; invoiceItems: InvoiceItem[]; ledger: LedgerEntry[]; refunds: RefundRow[] };
   academics: TermResult[];
   canManage: boolean;
   canApprove: boolean;
+  canRemove: boolean;
 };
 export type RefundRow = { id: string; amount: number; status: string; reason: string | null; date: string };
 
@@ -73,15 +76,20 @@ export async function getStudentProfile(studentId: string): Promise<StudentProfi
   if (!stu) return { error: "Student not found." };
 
   const [invRows, payRows, paidByInv, refundRows] = await Promise.all([
-    db.select({ id: invoices.id, description: invoices.description, amount: invoices.amount, status: invoices.status, dueDate: invoices.dueDate, createdAt: invoices.createdAt }).from(invoices).where(eq(invoices.studentId, studentId)).orderBy(asc(invoices.createdAt)),
+    db.select({ id: invoices.id, description: invoices.description, amount: invoices.amount, mandatory: invoices.mandatory, status: invoices.status, dueDate: invoices.dueDate, createdAt: invoices.createdAt }).from(invoices).where(eq(invoices.studentId, studentId)).orderBy(asc(invoices.createdAt)),
     db.select({ id: payments.id, amount: payments.amount, method: payments.method, status: payments.status, createdAt: payments.createdAt, receiptKey: payments.receiptKey, description: payments.description }).from(payments).where(eq(payments.studentId, studentId)).orderBy(desc(payments.createdAt)).limit(100),
     db.select({ invoiceId: payments.invoiceId, paid: sql<string>`sum(${payments.amount})` }).from(payments).where(and(eq(payments.studentId, studentId), eq(payments.status, "approved"))).groupBy(payments.invoiceId),
     db.select({ id: refundRequests.id, amount: refundRequests.amount, status: refundRequests.status, reason: refundRequests.reason, createdAt: refundRequests.createdAt }).from(refundRequests).where(eq(refundRequests.studentId, studentId)).orderBy(desc(refundRequests.createdAt)),
   ]);
 
   const invoiced = invRows.reduce((n, r) => n + Number(r.amount), 0);
+  const mandatoryInvoiced = invRows.filter((r) => r.mandatory).reduce((n, r) => n + Number(r.amount), 0);
+  const optionalInvoiced = invoiced - mandatoryInvoiced;
   const paid = payRows.filter((p) => p.status === "approved").reduce((n, r) => n + Number(r.amount), 0);
   const refundedApproved = refundRows.filter((r) => r.status === "approved").reduce((n, r) => n + Number(r.amount), 0);
+  // Payments cover mandatory fees first, then optional, then become credit.
+  const outstanding = Math.max(0, mandatoryInvoiced - paid);
+  const optionalDue = Math.max(0, optionalInvoiced - Math.max(0, paid - mandatoryInvoiced));
   const credit = Math.max(0, paid - invoiced - refundedApproved);
   const refunds: RefundRow[] = refundRows.map((r) => ({ id: r.id, amount: Number(r.amount), status: r.status, reason: r.reason, date: new Date(r.createdAt).toLocaleDateString() }));
   const paidMap = new Map<string, number>();
@@ -90,7 +98,7 @@ export async function getStudentProfile(studentId: string): Promise<StudentProfi
   const invoiceItems: InvoiceItem[] = invRows.map((inv) => {
     const amount = Number(inv.amount), p = paidMap.get(inv.id) ?? 0;
     const status = p <= 0 ? "outstanding" : p >= amount ? "paid" : "partially_paid";
-    return { description: inv.description || "School fees", amount, status, date: new Date(inv.createdAt).toLocaleDateString() };
+    return { description: inv.description || "School fees", amount, status, date: new Date(inv.createdAt).toLocaleDateString(), mandatory: inv.mandatory };
   });
   // Next due: earliest due date among invoices not fully paid.
   const nextDue = invRows.filter((inv) => (paidMap.get(inv.id) ?? 0) < Number(inv.amount) && inv.dueDate).map((inv) => inv.dueDate as string).sort()[0] ?? null;
@@ -105,7 +113,7 @@ export async function getStudentProfile(studentId: string): Promise<StudentProfi
   const ledger: LedgerEntry[] = events.map((e) => { bal += e.amount; return { date: e.date, description: e.description, method: e.method, amount: e.amount, balance: Math.max(0, bal), receiptNo: e.receiptNo, kind: e.kind }; }).reverse();
 
   const financial = {
-    invoiced, paid, outstanding: Math.max(0, invoiced - paid), credit, nextDue,
+    invoiced, paid, outstanding, optionalDue, credit, nextDue,
     payments: payRows.map((p) => ({ id: p.id, amount: Number(p.amount), method: p.method, status: p.status, date: new Date(p.createdAt).toLocaleDateString(), receiptKey: p.receiptKey, receiptNo: rcpNo(p.id), description: p.description })),
     invoiceItems, ledger, refunds,
   };
@@ -147,7 +155,7 @@ export async function getStudentProfile(studentId: string): Promise<StudentProfi
   return {
     id: stu.id, name: `${stu.firstName} ${stu.lastName}`.trim(), admissionNo: stu.admissionNo, className: stu.className, photoKey: stu.photoKey,
     enrolledOn: new Date(stu.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }),
-    bio: readBio(stu.profile, stu.dateOfBirth), summary, financial, academics, canManage: c.canManage, canApprove: c.canApprove,
+    bio: readBio(stu.profile, stu.dateOfBirth), summary, financial, academics, canManage: c.canManage, canApprove: c.canApprove, canRemove: c.role === "school_admin",
   };
 }
 
@@ -209,6 +217,70 @@ export async function deleteStudentResult(input: { studentId: string; term: stri
   if (!c?.canManage) return { error: "You don't have permission." };
   await db.delete(studentResults).where(and(eq(studentResults.schoolId, c.schoolId), eq(studentResults.studentId, input.studentId), eq(studentResults.term, input.term.trim()), eq(studentResults.subject, input.subject.trim())));
   return { ok: true };
+}
+
+// Regenerates a student's login password (school-branded) and returns it once to hand over.
+export async function regenerateStudentPassword(studentId: string): Promise<{ ok: true; password: string; studentName: string } | { error: string }> {
+  const c = await ctx();
+  if (!c?.canManage) return { error: "You don't have permission to reset passwords." };
+  const [stu] = await db.select({ userId: students.userId, fn: students.firstName, ln: students.lastName }).from(students).where(and(eq(students.id, studentId), eq(students.schoolId, c.schoolId))).limit(1);
+  if (!stu?.userId) return { error: "This student has no login account." };
+  const [school] = await db.select({ name: schools.name }).from(schools).where(eq(schools.id, c.schoolId)).limit(1);
+  const password = generateStudentPassword(school?.name);
+  try {
+    const hash = await hashPassword(password);
+    await db.update(accounts).set({ password: hash, updatedAt: new Date() }).where(and(eq(accounts.userId, stu.userId), eq(accounts.providerId, "credential")));
+    await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: "student.password_reset", entityType: "Student", entityId: stu.userId, metadata: { name: `${stu.fn} ${stu.ln}`.trim() } });
+    return { ok: true, password, studentName: `${stu.fn} ${stu.ln}`.trim() };
+  } catch {
+    return { error: "Could not reset the password. Please try again." };
+  }
+}
+
+// Permanently removes a student + their login. Admin only, and blocked once they have payment
+// records (delete would erase the financial trail — those students should be withdrawn, not deleted).
+export async function removeStudent(studentId: string): Promise<{ ok: true } | { error: string }> {
+  const c = await ctx();
+  if (c?.role !== "school_admin") return { error: "Only an admin can remove a student." };
+  const [stu] = await db.select({ userId: students.userId, fn: students.firstName, ln: students.lastName }).from(students).where(and(eq(students.id, studentId), eq(students.schoolId, c.schoolId))).limit(1);
+  if (!stu) return { error: "Student not found." };
+  const [pay] = await db.select({ id: payments.id }).from(payments).where(eq(payments.studentId, studentId)).limit(1);
+  if (pay) return { error: "This student has payment records and can't be deleted. Their history must be kept." };
+  try {
+    await db.transaction(async (tx) => {
+      await tx.delete(students).where(eq(students.id, studentId)); // cascades invoices, results, refunds
+      if (stu.userId) await tx.delete(users).where(eq(users.id, stu.userId)); // cascades membership + account
+    });
+    await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: "student.removed", entityType: "Student", entityId: studentId, metadata: { name: `${stu.fn} ${stu.ln}`.trim() } });
+    return { ok: true };
+  } catch {
+    return { error: "Could not remove the student. Please try again." };
+  }
+}
+
+// Bulk-resets logins for a class (or all students) and returns the new credentials once, for a
+// printable sheet. Existing passwords can't be shown (they're hashed) — this regenerates them.
+export type Credential = { name: string; studentId: string; password: string; className: string | null };
+export async function bulkResetPasswords(input: { className?: string }): Promise<{ ok: true; credentials: Credential[] } | { error: string }> {
+  const c = await ctx();
+  if (c?.role !== "school_admin") return { error: "Only an admin can reset student logins in bulk." };
+  const [school] = await db.select({ name: schools.name }).from(schools).where(eq(schools.id, c.schoolId)).limit(1);
+  const className = input.className?.trim();
+  const where = className ? and(eq(students.schoolId, c.schoolId), eq(students.className, className)) : eq(students.schoolId, c.schoolId);
+  const rows = (await db.select({ userId: students.userId, fn: students.firstName, ln: students.lastName, admissionNo: students.admissionNo, className: students.className }).from(students).where(where).orderBy(asc(students.className), asc(students.firstName)).limit(300)).filter((r) => r.userId);
+  if (rows.length === 0) return { error: "No students with logins in that scope." };
+  if (rows.length > 250) return { error: "Too many at once — reset by class instead (up to 250)." };
+  const creds = rows.map((r) => ({ ...r, password: generateStudentPassword(school?.name), hash: "" }));
+  for (const cr of creds) cr.hash = await hashPassword(cr.password);
+  try {
+    await db.transaction(async (tx) => {
+      for (const cr of creds) await tx.update(accounts).set({ password: cr.hash, updatedAt: new Date() }).where(and(eq(accounts.userId, cr.userId!), eq(accounts.providerId, "credential")));
+    });
+    await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: "students.passwords_reset", entityType: "Student", metadata: { count: creds.length, className: className ?? "all" } });
+    return { ok: true, credentials: creds.map((cr) => ({ name: `${cr.fn} ${cr.ln}`.trim(), studentId: cr.admissionNo, password: cr.password, className: cr.className })) };
+  } catch {
+    return { error: "Could not reset the passwords. Please try again." };
+  }
 }
 
 export async function uploadStudentPhoto(form: FormData): Promise<{ ok: true; url: string } | { error: string }> {

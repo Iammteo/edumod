@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createStudent, resetStudentPassword } from "@/lib/actions/people";
-import { SCHOOL_CLASSES } from "@/lib/classes";
+import { useClassNames } from "@/components/app/use-classes";
 
 function Field({ label, name, type = "text", placeholder }: { label: string; name: string; type?: string; placeholder: string }) {
   return (
@@ -43,6 +43,7 @@ export function AddStudentForm() {
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<{ studentId: string; password: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const classNames = useClassNames();
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
@@ -61,7 +62,7 @@ export function AddStudentForm() {
         <span className="text-[11px] font-extrabold text-ink">Class</span>
         <select name="className" defaultValue="" className="min-h-10 rounded-[10px] border border-border-soft bg-paper/60 px-3 text-[13px] text-ink outline-none transition focus:border-brand-blue focus:bg-white focus:ring-2 focus:ring-brand-blue/20">
           <option value="">No class yet</option>
-          {SCHOOL_CLASSES.map((c) => <option key={c} value={c}>{c}</option>)}
+          {classNames.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
       </label>
       <Submit busy={busy}>Create student</Submit>
