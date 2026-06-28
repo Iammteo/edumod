@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getStudentProfile, updateStudentProfile, uploadStudentPhoto, type StudentProfile } from "@/lib/actions/students";
+import { getStudentProfile, updateStudentProfile, uploadStudentPhoto, regenerateStudentPassword, removeStudent, type StudentProfile } from "@/lib/actions/students";
 import { requestRefund, carryForwardCredit, decideRefund } from "@/lib/actions/refunds";
 import { StudentProfileEdit } from "./student-profile-edit";
 import { StudentResults } from "./student-results";
@@ -20,6 +20,7 @@ export function StudentProfilePage({ studentId, onBack, onChanged }: { studentId
   const [err, setErr] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("Overview");
   const [editing, setEditing] = useState(false);
+  const [pwd, setPwd] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -34,6 +35,18 @@ export function StudentProfilePage({ studentId, onBack, onChanged }: { studentId
     const r = await uploadStudentPhoto(fd);
     if ("error" in r) setErr(r.error); else { load(); onChanged?.(); }
   }
+  async function resetPwd() {
+    if (!confirm(`Reset ${data?.name}'s password? Their current password will stop working.`)) return;
+    setErr(null); setPwd(null);
+    const r = await regenerateStudentPassword(studentId);
+    if ("error" in r) setErr(r.error); else setPwd(r.password);
+  }
+  async function remove() {
+    if (!confirm(`Permanently remove ${data?.name}? This deletes their record and login.`)) return;
+    setErr(null);
+    const r = await removeStudent(studentId);
+    if ("error" in r) setErr(r.error); else { onChanged?.(); onBack(); }
+  }
 
   if (!data) return <div className="grid place-items-center py-20 text-[13px] text-ink-soft">{err ?? "Loading profile…"}</div>;
   const b = data.bio, f = data.financial;
@@ -44,10 +57,13 @@ export function StudentProfilePage({ studentId, onBack, onChanged }: { studentId
         <div className="flex items-center gap-2 text-[12px] text-ink-soft"><button onClick={onBack} className="font-extrabold text-brand-blue hover:underline">Students</button><span>›</span><span className="font-bold text-ink">Student profile</span></div>
         <div className="flex flex-wrap gap-2">
           {data.canManage && <button onClick={() => setEditing(true)} className="inline-flex min-h-9 items-center gap-1.5 rounded-[10px] border border-border-soft bg-white px-3.5 text-[12px] font-extrabold text-ink transition hover:border-brand-blue hover:text-brand-blue">✎ Edit profile</button>}
+          {data.canManage && <button onClick={resetPwd} className="inline-flex min-h-9 items-center gap-1.5 rounded-[10px] border border-border-soft bg-white px-3.5 text-[12px] font-extrabold text-ink transition hover:border-brand-blue hover:text-brand-blue">🔑 Reset password</button>}
+          {data.canRemove && <button onClick={remove} className="inline-flex min-h-9 items-center gap-1.5 rounded-[10px] border border-[#f3c2c2] bg-[#fdeeee] px-3.5 text-[12px] font-extrabold text-[#b3261e] transition hover:bg-[#fbe3e3]">Remove</button>}
           <button onClick={() => setTab("Finance")} className="inline-flex min-h-9 items-center gap-1.5 rounded-[10px] bg-brand-blue px-3.5 text-[12px] font-extrabold text-white transition hover:bg-brand-dark">₦ Finance record</button>
         </div>
       </div>
       {err && <div className="mb-3 rounded-[10px] border border-[#f3c2c2] bg-[#fdeeee] px-3 py-2 text-[12px] font-bold text-[#b3261e]">{err}</div>}
+      {pwd && <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-brand-blue/30 bg-brand-soft/40 px-3.5 py-2.5"><span className="text-[12px] font-bold text-ink">New password for {data.name}: <code className="select-all rounded bg-white px-2 py-0.5 text-[13px] font-extrabold text-brand-blue">{pwd}</code> — share it now, it won&rsquo;t be shown again.</span><button onClick={() => setPwd(null)} className="text-[12px] font-extrabold text-brand-blue hover:underline">Dismiss</button></div>}
 
       {/* Header card */}
       <div className="rounded-2xl border border-border-soft bg-white p-5">
@@ -262,7 +278,8 @@ function FinanceTab({ data, onChanged, onErr }: { data: StudentProfile; onChange
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Mini label="Total billed" v={naira(f.invoiced)} c="#2159e8" /><Mini label="Paid so far" v={naira(f.paid)} c="#178a4c" /><Mini label="Outstanding" v={naira(f.outstanding)} c="#b9540f" /><Mini label="Next due" v={f.nextDue ?? "—"} c="#6b2fb3" />
         </div>
-        {f.outstanding > 0 && <div className="rounded-xl border border-[#f0d3a8] bg-[#fdf6e9] px-3.5 py-2.5 text-[12px] font-bold text-[#b9540f]">{paidPct}% paid · {naira(f.outstanding)} remaining. Ensure balances are cleared before exam clearance or promotion.</div>}
+        {f.outstanding > 0 && <div className="rounded-xl border border-[#f0d3a8] bg-[#fdf6e9] px-3.5 py-2.5 text-[12px] font-bold text-[#b9540f]">{paidPct}% paid · {naira(f.outstanding)} mandatory remaining. Ensure balances are cleared before exam clearance or promotion.</div>}
+        {f.optionalDue > 0 && <div className="rounded-xl border border-border-soft bg-paper/50 px-3.5 py-2.5 text-[12px] font-bold text-ink-soft">Plus <span className="text-[#b9540f]">{naira(f.optionalDue)}</span> in optional fees — not required for clearance.</div>}
         <Card title="📒 Student finance ledger">
           {f.ledger.length === 0 ? <p className="text-[12px] text-ink-soft">No financial activity yet.</p> : (
             <div className="overflow-x-auto"><table className="w-full min-w-[420px] text-left text-[12px]">
@@ -277,7 +294,7 @@ function FinanceTab({ data, onChanged, onErr }: { data: StudentProfile; onChange
         <Card title="📄 Invoice breakdown">
           {f.invoiceItems.length === 0 ? <p className="text-[12px] text-ink-soft">No fees issued to this student yet.</p> : (
             <>
-              <ul className="grid gap-0">{f.invoiceItems.map((it, i) => <li key={i} className="flex items-center justify-between gap-3 border-b border-border-soft py-2 last:border-0"><span className="min-w-0"><span className="block truncate text-[12px] font-bold text-ink">{it.description}</span><span className={`text-[10px] font-extrabold ${it.status === "paid" ? "text-brand-green" : it.status === "partially_paid" ? "text-[#b9540f]" : "text-[#b3261e]"}`}>{it.status === "paid" ? "Paid" : it.status === "partially_paid" ? "Part paid" : "Unpaid"}</span></span><span className="shrink-0 text-[12px] font-extrabold text-ink">{naira(it.amount)}</span></li>)}</ul>
+              <ul className="grid gap-0">{f.invoiceItems.map((it, i) => <li key={i} className="flex items-center justify-between gap-3 border-b border-border-soft py-2 last:border-0"><span className="min-w-0"><span className="flex items-center gap-1.5"><span className="truncate text-[12px] font-bold text-ink">{it.description}</span>{!it.mandatory && <span className="shrink-0 rounded-full bg-[#fdf6e9] px-1.5 py-0.5 text-[9px] font-extrabold text-[#b9540f]">Optional</span>}</span><span className={`text-[10px] font-extrabold ${it.status === "paid" ? "text-brand-green" : it.status === "partially_paid" ? "text-[#b9540f]" : "text-[#b3261e]"}`}>{it.status === "paid" ? "Paid" : it.status === "partially_paid" ? "Part paid" : "Unpaid"}</span></span><span className="shrink-0 text-[12px] font-extrabold text-ink">{naira(it.amount)}</span></li>)}</ul>
               <div className="mt-2 flex items-center justify-between border-t-2 border-border-soft pt-2 text-[13px] font-extrabold"><span>Total</span><span className="text-brand-blue">{naira(f.invoiced)}</span></div>
             </>
           )}

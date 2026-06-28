@@ -167,7 +167,7 @@ function SelectedClass({ detail, onViewInvoices }: { detail: ClassDetail | null;
       <div className="mt-4 grid items-center gap-4 sm:grid-cols-[1fr_auto]">
         <div>
           <div className="mb-1.5 text-[11px] font-extrabold text-ink-soft">Fee items breakdown</div>
-          {detail.feeItems.length === 0 ? <p className="text-[12px] text-ink-soft">No fees issued to this class yet.</p> : <ul className="grid gap-1">{detail.feeItems.map((it, i) => <li key={it.description} className="flex items-center justify-between gap-2 text-[12px]"><span className="flex items-center gap-1.5 text-ink-soft"><span className="size-2 rounded-full" style={{ backgroundColor: FEE_COLORS[i % FEE_COLORS.length] }} />{it.description}</span><span className="font-bold text-ink">{naira(it.amount)}</span></li>)}</ul>}
+          {detail.feeItems.length === 0 ? <p className="text-[12px] text-ink-soft">No fees issued to this class yet.</p> : <ul className="grid gap-1">{detail.feeItems.map((it, i) => <li key={it.description} className="flex items-center justify-between gap-2 text-[12px]"><span className="flex items-center gap-1.5 text-ink-soft"><span className="size-2 rounded-full" style={{ backgroundColor: FEE_COLORS[i % FEE_COLORS.length] }} />{it.description}{!it.mandatory && <span className="rounded-full bg-[#fdf6e9] px-1.5 py-0.5 text-[9px] font-extrabold text-[#b9540f]">Optional</span>}</span><span className="font-bold text-ink">{naira(it.amount)}</span></li>)}</ul>}
         </div>
         <div className="mx-auto grid place-items-center">
           <div className="relative size-36">

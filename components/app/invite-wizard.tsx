@@ -3,9 +3,9 @@
 import { useMemo, useState } from "react";
 import { inviteStaff, type StaffRole } from "@/lib/actions/people";
 import { AREAS, AREA_LABELS, LEVELS, ROLES, buildMatrix, buildSummary, type Area, type Level, type RoleKey } from "@/lib/permissions";
+import { useClassNames } from "@/components/app/use-classes";
 
 const SUBJECTS = ["English Language", "Mathematics", "Literature", "Physics", "Chemistry", "Biology", "Further Maths", "Civic Education", "Economics", "Geography", "Basic Science", "Social Studies"];
-const CLASSES = ["JSS 1A", "JSS 1B", "JSS 2A", "JSS 2B", "JSS 3A", "SSS 1A", "SSS 1B", "SSS 2A", "SSS 3A", "Primary 4", "Primary 5", "Primary 6"];
 const EMPLOYMENT = ["Full-time", "Part-time", "Contract"];
 const STEPS = ["Staff details", "Teaching responsibilities", "Access summary", "Review & send"];
 
@@ -23,6 +23,8 @@ export function InviteWizard({ onClose, onDone }: { onClose: () => void; onDone:
   const [step, setStep] = useState(0);
   const [phase, setPhase] = useState<"form" | "sending" | "done" | "error">("form");
   const [err, setErr] = useState<string | null>(null);
+  const [issuedStaffId, setIssuedStaffId] = useState<string>("");
+  const CLASSES = useClassNames();
   const [f, setF] = useState({
     name: "", email: "", employmentType: "Full-time", role: "teacher" as RoleKey, startDate: "", staffId: "",
     isTeacher: true, isClassTeacher: false, assignedClass: "", subjects: [] as string[], teachingClasses: [] as string[],
@@ -48,10 +50,11 @@ export function InviteWizard({ onClose, onDone }: { onClose: () => void; onDone:
     setPhase("sending"); setErr(null);
     const r = await inviteStaff({ name: f.name, email: f.email, employmentType: f.employmentType, role: f.role as StaffRole, startDate: f.startDate || undefined, staffId: f.staffId || undefined, isTeacher: f.isTeacher, isClassTeacher: f.isClassTeacher, assignedClass: f.assignedClass || undefined, subjects: f.subjects, teachingClasses: f.teachingClasses, canApprovePayments: f.canApprovePayments, permissions: perm });
     if ("error" in r) { setErr(r.error); setPhase("error"); return; }
+    setIssuedStaffId(r.staffId);
     setPhase("done");
   }
 
-  if (phase === "done") return <Result icon="✓" tone="green" title="Invitation sent successfully" body={`${f.name || "Your staff member"} will receive an email to set a password and complete their profile.`} primary={["Invite another", () => { setF({ ...f, name: "", email: "", staffId: "" }); setStep(0); setPhase("form"); }]} secondary={["View staff", onDone]} />;
+  if (phase === "done") return <Result icon="✓" tone="green" title="Invitation sent successfully" body={`${f.name || "Your staff member"} will receive an email to set a password and complete their profile. They can sign in with the Staff ID below or their email.`} highlight={issuedStaffId ? { label: "Staff ID", value: issuedStaffId } : undefined} primary={["Invite another", () => { setF({ ...f, name: "", email: "", staffId: "" }); setStep(0); setPhase("form"); }]} secondary={["View staff", onDone]} />;
   if (phase === "error") return <Result icon="!" tone="red" title="We couldn't send the invitation" body={err || "The email may be invalid or the connection was interrupted. Your details are saved."} primary={["Try again", send]} secondary={["Edit details", () => setPhase("form")]} />;
   if (phase === "sending") return <div className="grid place-items-center rounded-2xl border border-border-soft bg-white py-24 text-center"><div className="mb-4 text-4xl motion-safe:animate-[float_2s_ease-in-out_infinite]">✈️</div><h2 className="font-display text-[20px] font-semibold">Sending invitation…</h2><p className="mt-1 text-[13px] text-ink-soft">Preparing secure access for {f.name || "your staff member"}.</p></div>;
 
@@ -114,12 +117,13 @@ export function InviteWizard({ onClose, onDone }: { onClose: () => void; onDone:
   );
 }
 
-function Result({ icon, tone, title, body, primary, secondary }: { icon: string; tone: "green" | "red"; title: string; body: string; primary: [string, () => void]; secondary: [string, () => void] }) {
+function Result({ icon, tone, title, body, highlight, primary, secondary }: { icon: string; tone: "green" | "red"; title: string; body: string; highlight?: { label: string; value: string }; primary: [string, () => void]; secondary: [string, () => void] }) {
   return (
     <div className="grid place-items-center rounded-2xl border border-border-soft bg-white py-16 text-center motion-safe:animate-[fade-up_.4s_ease]">
       <div className={`mb-4 grid size-16 place-items-center rounded-full text-3xl ${tone === "green" ? "bg-brand-green/10 text-brand-green" : "bg-[#fdeeee] text-[#b3261e]"}`}>{icon}</div>
       <h2 className="font-display text-[22px] font-semibold">{title}</h2>
       <p className="mt-1.5 max-w-md text-[13px] leading-relaxed text-ink-soft">{body}</p>
+      {highlight && <div className="mt-4 inline-flex items-center gap-2 rounded-[12px] border border-brand-soft bg-brand-soft/40 px-4 py-2.5"><span className="text-[11px] font-extrabold uppercase tracking-wide text-ink-soft">{highlight.label}</span><code className="select-all font-display text-[18px] font-bold tracking-wide text-brand-blue">{highlight.value}</code><button type="button" onClick={() => navigator.clipboard?.writeText(highlight.value)} className="rounded-md px-2 py-1 text-[11px] font-extrabold text-brand-blue transition hover:bg-white" title="Copy">Copy</button></div>}
       <div className="mt-5 flex gap-2.5"><button onClick={primary[1]} className="rounded-[10px] bg-brand-blue px-5 py-2.5 text-[13px] font-extrabold text-white transition hover:bg-brand-dark">{primary[0]}</button><button onClick={secondary[1]} className="rounded-[10px] border border-border-soft px-5 py-2.5 text-[13px] font-extrabold text-ink-soft transition hover:text-brand-blue">{secondary[0]}</button></div>
     </div>
   );

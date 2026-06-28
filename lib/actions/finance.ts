@@ -11,18 +11,23 @@ import { db } from "@/lib/db";
 import { feeStructures, invoices, memberships, payments, schools, students, users } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
 
+// Staff allowed to record payments / issue fees. Bursars and senior staff manage finance, not just
+// the owner-admin.
+const FINANCE_ROLES = ["school_admin", "bursar", "principal", "vice_principal"];
+
 async function ctx() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) return null;
   const [m] = await db.select().from(memberships).where(eq(memberships.userId, session.user.id)).limit(1);
   if (!m) return null;
   const [school] = await db.select({ requireApproval: schools.requireApproval }).from(schools).where(eq(schools.id, m.schoolId)).limit(1);
-  return { userId: session.user.id, schoolId: m.schoolId, role: m.role, canApprove: m.role === "school_admin" || m.canApprovePayments, requireApproval: !!school?.requireApproval };
+  return { userId: session.user.id, schoolId: m.schoolId, role: m.role, canRecord: FINANCE_ROLES.includes(m.role), canApprove: m.role === "school_admin" || m.canApprovePayments, requireApproval: !!school?.requireApproval };
 }
 
 export type Payment = { id: string; student: string; admissionNo: string; amount: number; method: string; status: string; recordedBy: string; approver: string | null; mine: boolean; date: string; description: string | null; proofKey: string | null; receiptKey: string | null };
-export type Fee = { id: string; name: string; termLabel: string | null; amount: number; classes: string[] };
-export type InvoiceRow = { id: string; no: string; studentId: string; student: string; admissionNo: string; description: string; amount: number; paid: number; outstanding: number; status: string; date: string };
+export type FeeItem = { name: string; amount: number; mandatory: boolean };
+export type Fee = { id: string; name: string; termLabel: string | null; amount: number; classes: string[]; items: FeeItem[] };
+export type InvoiceRow = { id: string; no: string; studentId: string; student: string; admissionNo: string; description: string; amount: number; paid: number; outstanding: number; status: string; date: string; mandatory: boolean };
 export type OpenInvoice = { id: string; studentId: string; no: string; description: string; amount: number; outstanding: number };
 export type ReceiptRow = { id: string; no: string; student: string; amount: number; method: string; date: string; token: string | null };
 export type ClassCount = { className: string; count: number };
@@ -63,7 +68,7 @@ export async function getFinanceData(): Promise<FinanceData | { error: string }>
       .where(eq(payments.schoolId, c.schoolId)).orderBy(desc(payments.createdAt)).limit(100),
     db.select({ id: students.id, firstName: students.firstName, lastName: students.lastName, admissionNo: students.admissionNo, className: students.className }).from(students).where(eq(students.schoolId, c.schoolId)).orderBy(desc(students.createdAt)).limit(500),
     db.select().from(feeStructures).where(eq(feeStructures.schoolId, c.schoolId)).orderBy(desc(feeStructures.createdAt)),
-    db.select({ id: invoices.id, studentId: invoices.studentId, description: invoices.description, amount: invoices.amount, createdAt: invoices.createdAt, sf: students.firstName, sl: students.lastName, admissionNo: students.admissionNo })
+    db.select({ id: invoices.id, studentId: invoices.studentId, description: invoices.description, amount: invoices.amount, mandatory: invoices.mandatory, createdAt: invoices.createdAt, sf: students.firstName, sl: students.lastName, admissionNo: students.admissionNo })
       .from(invoices).innerJoin(students, eq(students.id, invoices.studentId)).where(eq(invoices.schoolId, c.schoolId)).orderBy(desc(invoices.createdAt)).limit(500),
     db.select({ invoiceId: payments.invoiceId, paid: sql<string>`coalesce(sum(${payments.amount}), 0)` }).from(payments).where(and(eq(payments.schoolId, c.schoolId), eq(payments.status, "approved"))).groupBy(payments.invoiceId),
     db.select({ className: students.className, count: sql<number>`count(*)::int` }).from(students).where(eq(students.schoolId, c.schoolId)).groupBy(students.className),
@@ -91,9 +96,11 @@ export async function getFinanceData(): Promise<FinanceData | { error: string }>
     const paid = paidMap.get(inv.id) ?? 0;
     const due = Math.max(0, amount - paid);
     const status = paid <= 0 ? "outstanding" : paid >= amount ? "paid" : "partially_paid";
-    if (due > 0) { outstanding += due; outstandingCount += 1; }
+    // Only mandatory items count toward what a student/school owes; optional items are billed but
+    // don't block clearance.
+    if (due > 0 && inv.mandatory) { outstanding += due; outstandingCount += 1; }
     const desc = inv.description || "School fees";
-    invoiceList.push({ id: inv.id, no: invNo(inv.id), studentId: inv.studentId, student: `${inv.sf} ${inv.sl}`.trim(), admissionNo: inv.admissionNo, description: desc, amount, paid, outstanding: due, status, date: new Date(inv.createdAt).toLocaleDateString() });
+    invoiceList.push({ id: inv.id, no: invNo(inv.id), studentId: inv.studentId, student: `${inv.sf} ${inv.sl}`.trim(), admissionNo: inv.admissionNo, description: desc, amount, paid, outstanding: due, status, date: new Date(inv.createdAt).toLocaleDateString(), mandatory: inv.mandatory });
     if (due > 0) openInvoices.push({ id: inv.id, studentId: inv.studentId, no: invNo(inv.id), description: desc, amount, outstanding: due });
   }
 
@@ -113,39 +120,47 @@ export async function getFinanceData(): Promise<FinanceData | { error: string }>
   return {
     stats: { collected, outstanding, outstandingCount, pending, pendingCount, thisMonth, receiptsIssued },
     payments: list,
-    fees: feeRows.map((f) => ({ id: f.id, name: f.name, termLabel: f.termLabel, amount: Number(f.amount), classes: Array.isArray(f.classes) ? (f.classes as string[]) : [] })),
+    fees: feeRows.map((f) => ({ id: f.id, name: f.name, termLabel: f.termLabel, amount: Number(f.amount), classes: Array.isArray(f.classes) ? (f.classes as string[]) : [], items: Array.isArray(f.items) ? (f.items as FeeItem[]) : [] })),
     students: studentRows.map((s) => ({ id: s.id, name: `${s.firstName} ${s.lastName}`.trim(), admissionNo: s.admissionNo, className: s.className })),
     invoices: invoiceList.slice(0, 12),
     openInvoices,
     receipts,
     classCounts: classRows.filter((r) => r.className).map((r) => ({ className: r.className as string, count: Number(r.count) })),
     classSummary,
-    canRecord: c.role === "school_admin" || c.role === "bursar",
+    canRecord: c.canRecord,
     canApprove: c.canApprove,
     requireApproval: c.requireApproval,
   };
 }
 
-// Creates a fee structure and issues invoices. When `classes` is empty the fee applies to every
-// student; otherwise only to students whose class is in the list (e.g. ["Primary 1","JSS 3"]).
-export async function createFeeStructure(input: { name: string; termLabel?: string; amount: number; dueDate?: string; classes?: string[] }): Promise<{ ok: true; issued: number } | { error: string }> {
+// Creates a fee bill made of one or more line items (e.g. Tuition, Excursion, PTA), each marked
+// mandatory or optional, and issues one invoice per item to each targeted student. When `classes`
+// is empty the bill applies to every student; otherwise only to students in those classes.
+export type FeeItemInput = { name: string; amount: number; mandatory: boolean };
+export async function createFeeStructure(input: { name: string; termLabel?: string; dueDate?: string; classes?: string[]; items: FeeItemInput[] }): Promise<{ ok: true; issued: number } | { error: string }> {
   const c = await ctx();
   if (!c) return { error: "Not authorised." };
-  if (c.role !== "school_admin" && c.role !== "bursar") return { error: "You don't have permission to create fees." };
-  if (!input.name.trim()) return { error: "Give the fee a name." };
-  if (!(input.amount > 0)) return { error: "Enter a valid amount." };
+  if (!c.canRecord) return { error: "You don't have permission to issue fees." };
+  if (!input.name.trim()) return { error: "Give the bill a name." };
+  const items = (input.items ?? []).map((it) => ({ name: it.name.trim(), amount: Number(it.amount), mandatory: !!it.mandatory })).filter((it) => it.name && it.amount > 0);
+  if (items.length === 0) return { error: "Add at least one fee item with an amount." };
+  const total = items.reduce((n, it) => n + it.amount, 0);
   const classes = (input.classes ?? []).map((s) => s.trim()).filter(Boolean);
   try {
-    const [fee] = await db.insert(feeStructures).values({ schoolId: c.schoolId, name: input.name.trim(), termLabel: input.termLabel?.trim() || null, amount: input.amount.toFixed(2), appliesTo: classes.length ? "classes" : "all", classes }).returning();
-    const studentRows = await db.select({ id: students.id }).from(students)
-      .where(classes.length ? and(eq(students.schoolId, c.schoolId), inArray(students.className, classes)) : eq(students.schoolId, c.schoolId));
-    if (studentRows.length) {
-      await db.insert(invoices).values(studentRows.map((s) => ({ schoolId: c.schoolId, studentId: s.id, feeStructureId: fee.id, description: input.name.trim(), amount: input.amount.toFixed(2), dueDate: input.dueDate || null })));
-    }
-    await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: "fees.issued", entityType: "Fee", entityId: fee.id, metadata: { name: input.name.trim(), amount: input.amount, issued: studentRows.length, classes: classes.length ? classes : "all" } });
-    return { ok: true, issued: studentRows.length };
+    const { feeId, issued } = await db.transaction(async (tx) => {
+      const [fee] = await tx.insert(feeStructures).values({ schoolId: c.schoolId, name: input.name.trim(), termLabel: input.termLabel?.trim() || null, amount: total.toFixed(2), appliesTo: classes.length ? "classes" : "all", classes, items }).returning();
+      const studentRows = await tx.select({ id: students.id }).from(students)
+        .where(classes.length ? and(eq(students.schoolId, c.schoolId), inArray(students.className, classes)) : eq(students.schoolId, c.schoolId));
+      if (studentRows.length) {
+        const rows = studentRows.flatMap((s) => items.map((it) => ({ schoolId: c.schoolId, studentId: s.id, feeStructureId: fee.id, description: it.name, amount: it.amount.toFixed(2), mandatory: it.mandatory, dueDate: input.dueDate || null })));
+        await tx.insert(invoices).values(rows);
+      }
+      return { feeId: fee.id, issued: studentRows.length };
+    });
+    await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: "fees.issued", entityType: "Fee", entityId: feeId, metadata: { name: input.name.trim(), amount: total, items: items.length, issued, classes: classes.length ? classes : "all" } });
+    return { ok: true, issued };
   } catch {
-    return { error: "Could not create the fee. Please try again." };
+    return { error: "Could not create the bill. Please try again." };
   }
 }
 
@@ -154,7 +169,7 @@ export async function createFeeStructure(input: { name: string; termLabel?: stri
 export async function recordPayment(form: FormData): Promise<{ ok: true } | { error: string }> {
   const c = await ctx();
   if (!c) return { error: "Not authorised." };
-  if (c.role !== "school_admin" && c.role !== "bursar") return { error: "You don't have permission to record payments." };
+  if (!c.canRecord) return { error: "You don't have permission to record payments." };
   const studentId = String(form.get("studentId") || "");
   const amount = Number(form.get("amount") || 0);
   const method = String(form.get("method") || "cash");

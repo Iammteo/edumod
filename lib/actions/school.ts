@@ -20,7 +20,7 @@ async function adminSchoolId(): Promise<string | null> {
   return (await adminCtx())?.schoolId ?? null;
 }
 
-export async function updateSchoolProfile(input: { name?: string; email?: string; phone?: string; state?: string; country?: string; address?: string; requireApproval?: boolean }): Promise<{ ok: true } | { error: string }> {
+export async function updateSchoolProfile(input: { name?: string; email?: string; phone?: string; state?: string; country?: string; address?: string; requireApproval?: boolean; currentSession?: string; currentTerm?: string; dayStartsAt?: string; dayEndsAt?: string }): Promise<{ ok: true } | { error: string }> {
   const ctx = await adminCtx();
   if (!ctx) return { error: "Only an admin can update the school." };
   const patch: Partial<typeof schools.$inferInsert> = {};
@@ -30,7 +30,17 @@ export async function updateSchoolProfile(input: { name?: string; email?: string
   if (input.state?.trim()) patch.state = input.state.trim();
   if (input.country?.trim()) patch.country = input.country.trim();
   if (input.address?.trim()) patch.address = input.address.trim();
+  if (input.currentSession?.trim()) patch.currentSession = input.currentSession.trim();
+  if (input.currentTerm?.trim()) patch.currentTerm = input.currentTerm.trim();
   if (typeof input.requireApproval === "boolean") patch.requireApproval = input.requireApproval;
+  // School day hours ("HH:MM" or "" to clear) — used to flag Late / left-early on the staff register.
+  for (const f of ["dayStartsAt", "dayEndsAt"] as const) {
+    const v = input[f];
+    if (v === undefined) continue;
+    if (v === "") patch[f] = null;
+    else if (/^\d{2}:\d{2}$/.test(v)) patch[f] = v;
+    else return { error: "Times must be in HH:MM format." };
+  }
   if (Object.keys(patch).length === 0) return { error: "Nothing to update." };
   try {
     await db.update(schools).set({ ...patch, updatedAt: new Date() }).where(eq(schools.id, ctx.schoolId));

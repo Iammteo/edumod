@@ -11,7 +11,8 @@ import { SCHOOL_CODE_MAX_ATTEMPTS } from "@/lib/identity/config";
 import { generateAdmissionNo } from "@/lib/identity/student-id";
 import { generateStudentPassword } from "@/lib/identity/password";
 import { logAudit } from "@/lib/audit";
-import { composeUsername } from "@/lib/identity/student-id";
+import { composeUsername, normalizeIdentifier } from "@/lib/identity/student-id";
+import { generateStaffId } from "@/lib/identity/staff-id";
 import { isLockedOut, recordFailure, clearFailures } from "@/lib/rate-limit";
 import { sendSchoolCodeEmail, sendEmail } from "@/lib/email";
 
@@ -60,16 +61,19 @@ export async function registerOrganization(input: { schoolName: string; state: s
   for (let attempt = 0; attempt < SCHOOL_CODE_MAX_ATTEMPTS; attempt++) {
     const code = generateSchoolCode();
     try {
-      const [school] = await db.insert(schools).values({
-        name,
-        slug: `${baseSlug}-${code}`,
-        schoolCode: code,
-        email: session.user.email,
-        state: input.state.trim() || null,
-        country: input.country.trim() || null,
-        address: input.address.trim() || null,
-      }).returning();
-      await db.insert(memberships).values({ schoolId: school.id, userId: session.user.id, role: "school_admin", canApprovePayments: true, canReleaseResults: true });
+      const school = await db.transaction(async (tx) => {
+        const [s] = await tx.insert(schools).values({
+          name,
+          slug: `${baseSlug}-${code}`,
+          schoolCode: code,
+          email: session.user.email,
+          state: input.state.trim() || null,
+          country: input.country.trim() || null,
+          address: input.address.trim() || null,
+        }).returning();
+        await tx.insert(memberships).values({ schoolId: s.id, userId: session.user.id, role: "school_admin", canApprovePayments: true, canReleaseResults: true });
+        return s;
+      });
       await logAudit({ schoolId: school.id, actorUserId: session.user.id, action: "school.created", entityType: "School", entityId: school.id, metadata: { name } });
       // Fire-and-forget so the dashboard loads immediately; the code is also shown in the UI.
       void sendSchoolCodeEmail(session.user.email, name, code).catch((e) => console.error("[email] school code send failed:", e));
@@ -94,9 +98,10 @@ export type InviteStaffInput = {
 
 // Admin invites a staff member with a full role/responsibility/permission assignment, then
 // emails a set-password link. The staff profile is created as "pending" until they onboard.
-export async function inviteStaff(input: InviteStaffInput): Promise<Result> {
+export async function inviteStaff(input: InviteStaffInput): Promise<{ ok: true; staffId: string } | { error: string }> {
   const ctx = await context();
   if (!ctx?.schoolId || ctx.role !== "school_admin") return { error: "Only an admin can invite staff." };
+  if (!ctx.school?.schoolCode) return { error: "Your organization has no school code set." };
   const email = input.email.trim();
   if (!input.name.trim() || !email) return { error: "Name and email are required." };
   try {
@@ -104,34 +109,49 @@ export async function inviteStaff(input: InviteStaffInput): Promise<Result> {
     const userId = (res as { user?: { id?: string } }).user?.id;
     if (!userId) return { error: "Could not create the staff account." };
     const inviteToken = randomUUID();
-    await db.insert(memberships).values({
-      schoolId: ctx.schoolId, userId, role: input.role,
-      canApprovePayments: input.canApprovePayments,
-      canReleaseResults: input.permissions.results === "approve",
-    });
-    await db.insert(staffProfiles).values({
-      schoolId: ctx.schoolId, userId,
-      staffNo: input.staffId?.trim() || null,
-      employmentType: input.employmentType,
-      jobRole: input.jobRole?.trim() || null,
-      startDate: input.startDate || null,
-      status: "pending",
-      isTeacher: input.isTeacher,
-      isClassTeacher: input.isClassTeacher,
-      assignedClass: input.assignedClass?.trim() || null,
-      subjects: input.subjects,
-      teachingClasses: input.teachingClasses,
-      permissions: input.permissions,
-      inviteToken,
+    let staffId = "";
+    await db.transaction(async (tx) => {
+      // Allocate a globally-unique Staff ID, which becomes the Better Auth username so the staffer
+      // can sign in with it (in addition to their email). Prefer an admin-supplied ID if it's free.
+      let usernameValue = "";
+      const preferred = input.staffId?.trim();
+      for (let i = 0; i < 14; i++) {
+        const cand = i === 0 && preferred ? preferred : generateStaffId(ctx.school!.name, ctx.school!.schoolCode!);
+        const uname = normalizeIdentifier(cand);
+        const [taken] = await tx.select({ id: users.id }).from(users).where(eq(users.username, uname)).limit(1);
+        if (!taken) { staffId = cand; usernameValue = uname; break; }
+      }
+      if (!usernameValue) throw new Error("staff-id-allocation-failed");
+      await tx.update(users).set({ username: usernameValue, displayUsername: staffId, updatedAt: new Date() }).where(eq(users.id, userId));
+      await tx.insert(memberships).values({
+        schoolId: ctx.schoolId!, userId, role: input.role,
+        canApprovePayments: input.canApprovePayments,
+        canReleaseResults: input.permissions.results === "approve",
+      });
+      await tx.insert(staffProfiles).values({
+        schoolId: ctx.schoolId!, userId,
+        staffNo: staffId,
+        employmentType: input.employmentType,
+        jobRole: input.jobRole?.trim() || null,
+        startDate: input.startDate || null,
+        status: "pending",
+        isTeacher: input.isTeacher,
+        isClassTeacher: input.isClassTeacher,
+        assignedClass: input.assignedClass?.trim() || null,
+        subjects: input.subjects,
+        teachingClasses: input.teachingClasses,
+        permissions: input.permissions,
+        inviteToken,
+      });
     });
     const link = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/onboarding?invite=${inviteToken}`;
     void sendEmail({
       to: email,
       subject: `You're invited to join ${ctx.school?.name ?? "your school"} on Edumod`,
-      text: `Hi ${input.name.trim()},\n\nYou've been invited to join ${ctx.school?.name ?? "your school"} on Edumod${input.jobRole ? ` as a ${input.jobRole}` : ""}.\n\nGet started by setting your password and completing your profile:\n${link}\n\nThis link is personal to you — please don't share it.`,
+      text: `Hi ${input.name.trim()},\n\nYou've been invited to join ${ctx.school?.name ?? "your school"} on Edumod${input.jobRole ? ` as a ${input.jobRole}` : ""}.\n\nYour Staff ID is ${staffId}. Once you've set your password you can sign in with either your Staff ID or your email.\n\nGet started by setting your password and completing your profile:\n${link}\n\nThis link is personal to you — please don't share it.`,
     }).catch((e) => console.error("[email] staff invite send failed:", e));
-    await logAudit({ schoolId: ctx.schoolId, actorUserId: ctx.userId, action: "staff.invited", entityType: "Staff", entityId: userId, metadata: { name: input.name.trim(), role: input.role } });
-    return { ok: true };
+    await logAudit({ schoolId: ctx.schoolId, actorUserId: ctx.userId, action: "staff.invited", entityType: "Staff", entityId: userId, metadata: { name: input.name.trim(), role: input.role, staffId } });
+    return { ok: true, staffId };
   } catch {
     return { error: "Could not invite this staff member — the email may already be in use." };
   }
@@ -150,25 +170,28 @@ export async function createStudent(input: { name: string; className?: string })
   const className = input.className?.trim() || null;
   const [firstName, ...rest] = name.split(/\s+/);
   const lastName = rest.join(" ") || firstName;
-  const password = generateStudentPassword();
+  const password = generateStudentPassword(ctx.school.name);
   const year = new Date().getFullYear();
   try {
     const hash = await hashPassword(password);
-    // Random, non-sequential admission number; retry until we find a free one for this school.
-    let admissionNo = "";
-    for (let i = 0; i < 12; i++) {
-      const cand = generateAdmissionNo(year);
-      const [exists] = await db.select({ id: students.id }).from(students).where(and(eq(students.schoolId, ctx.schoolId), eq(students.admissionNo, cand))).limit(1);
-      if (!exists) { admissionNo = cand; break; }
-    }
-    if (!admissionNo) return { error: "Could not allocate a student ID. Please try again." };
-    const usernameValue = composeUsername(ctx.school.schoolCode, admissionNo);
     const userId = randomUUID();
     const now = new Date();
-    await db.insert(users).values({ id: userId, name, email: null, emailVerified: false, accountType: "student", username: usernameValue, displayUsername: usernameValue, createdAt: now, updatedAt: now });
-    await db.insert(accounts).values({ id: randomUUID(), accountId: userId, providerId: "credential", userId, password: hash, createdAt: now, updatedAt: now });
-    await db.insert(students).values({ schoolId: ctx.schoolId, admissionNo, firstName, lastName, className, userId });
-    await db.insert(memberships).values({ schoolId: ctx.schoolId, userId, role: "student" });
+    // All four inserts succeed or none do — no orphaned user/account/membership on a partial failure.
+    const admissionNo = await db.transaction(async (tx) => {
+      let no = "";
+      for (let i = 0; i < 12; i++) {
+        const cand = generateAdmissionNo(year);
+        const [exists] = await tx.select({ id: students.id }).from(students).where(and(eq(students.schoolId, ctx.schoolId!), eq(students.admissionNo, cand))).limit(1);
+        if (!exists) { no = cand; break; }
+      }
+      if (!no) throw new Error("admission-allocation-failed");
+      const usernameValue = composeUsername(ctx.school!.schoolCode!, no);
+      await tx.insert(users).values({ id: userId, name, email: null, emailVerified: false, accountType: "student", username: usernameValue, displayUsername: usernameValue, createdAt: now, updatedAt: now });
+      await tx.insert(accounts).values({ id: randomUUID(), accountId: userId, providerId: "credential", userId, password: hash, createdAt: now, updatedAt: now });
+      await tx.insert(students).values({ schoolId: ctx.schoolId!, admissionNo: no, firstName, lastName, className, userId });
+      await tx.insert(memberships).values({ schoolId: ctx.schoolId!, userId, role: "student" });
+      return no;
+    });
     await logAudit({ schoolId: ctx.schoolId, actorUserId: ctx.userId, action: "student.added", entityType: "Student", entityId: userId, metadata: { name, admissionNo, className: className ?? null } });
     return { ok: true, studentId: admissionNo, password };
   } catch {
@@ -183,10 +206,11 @@ export async function resetStudentPassword(input: { studentId: string }): Promis
   if (!ctx?.schoolId || (ctx.role !== "school_admin" && ctx.role !== "teacher")) return { error: "You are not allowed to reset student passwords." };
   const [student] = await db.select().from(students).where(and(eq(students.schoolId, ctx.schoolId), eq(students.admissionNo, input.studentId.trim()))).limit(1);
   if (!student?.userId) return { error: "No student found with that ID in your school." };
-  const password = generateStudentPassword();
+  const password = generateStudentPassword(ctx.school?.name ?? undefined);
   try {
     const hash = await hashPassword(password);
     await db.update(accounts).set({ password: hash, updatedAt: new Date() }).where(and(eq(accounts.userId, student.userId), eq(accounts.providerId, "credential")));
+    await logAudit({ schoolId: ctx.schoolId, actorUserId: ctx.userId, action: "student.password_reset", entityType: "Student", entityId: student.userId, metadata: { name: `${student.firstName} ${student.lastName}`.trim() } });
     return { ok: true, studentName: `${student.firstName} ${student.lastName}`.trim(), password };
   } catch {
     return { error: "Could not reset the password. Please try again." };
@@ -245,5 +269,24 @@ export async function studentLogin(input: { schoolCode: string; studentId: strin
   } catch {
     await recordFailure(keys);
     return { error: "Invalid school code, Student ID, or password." };
+  }
+}
+
+// Staff sign-in with a Staff ID (the Better Auth username) + password — an alternative to email.
+// Same per-account + per-IP lockout as students; uniform error so it doesn't reveal valid IDs.
+export async function staffLogin(input: { staffId: string; password: string }): Promise<{ ok: true } | { error: string }> {
+  const h = await headers();
+  const ip = (h.get("x-forwarded-for")?.split(",")[0] || h.get("x-real-ip") || "unknown").trim();
+  const usernameValue = normalizeIdentifier(input.staffId);
+  const keys = [`user:${usernameValue}`, `ip:${ip}`];
+  if (await isLockedOut(keys)) return { error: "Too many attempts. Please wait a few minutes and try again." };
+  try {
+    await (auth.api as unknown as { signInUsername(a: { body: { username: string; password: string }; headers: Headers }): Promise<unknown> })
+      .signInUsername({ body: { username: usernameValue, password: input.password }, headers: h as unknown as Headers });
+    await clearFailures(keys);
+    return { ok: true };
+  } catch {
+    await recordFailure(keys);
+    return { error: "Invalid Staff ID or password." };
   }
 }

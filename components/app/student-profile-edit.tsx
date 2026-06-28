@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { updateStudentProfile, type StudentProfile, type StudentBio, type Guardian } from "@/lib/actions/students";
-import { SCHOOL_CLASSES } from "@/lib/classes";
+import { useClassNames } from "@/components/app/use-classes";
 
 const GENOTYPES = ["AA", "AS", "SS", "AC", "SC"];
 const BLOOD = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
@@ -14,6 +14,7 @@ function Box({ title, children }: { title: string; children: React.ReactNode }) 
 export function StudentProfileEdit({ data, onClose, onSaved }: { data: StudentProfile; onClose: () => void; onSaved: () => void }) {
   const [bio, setBio] = useState<StudentBio>(data.bio);
   const [className, setClassName] = useState(data.className ?? "");
+  const classNames = useClassNames();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const set = (k: keyof StudentBio, v: string) => setBio((p) => ({ ...p, [k]: v }));
@@ -38,7 +39,7 @@ export function StudentProfileEdit({ data, onClose, onSaved }: { data: StudentPr
             <div className="grid gap-3 sm:grid-cols-2">
               <F label="Sex"><select value={bio.sex} onChange={(e) => set("sex", e.target.value)} className={inputCls}><option value="">—</option><option>Male</option><option>Female</option></select></F>
               <F label="Date of birth"><input type="date" value={bio.dateOfBirth} onChange={(e) => set("dateOfBirth", e.target.value)} className={inputCls} /></F>
-              <F label="Class"><select value={className} onChange={(e) => setClassName(e.target.value)} className={inputCls}><option value="">No class</option>{SCHOOL_CLASSES.map((c) => <option key={c}>{c}</option>)}</select></F>
+              <F label="Class"><select value={className} onChange={(e) => setClassName(e.target.value)} className={inputCls}><option value="">No class</option>{classNames.map((c) => <option key={c}>{c}</option>)}</select></F>
               <F label="Arm / Section"><input value={bio.arm} onChange={(e) => set("arm", e.target.value)} className={inputCls} placeholder="A / Gold / Diligence" /></F>
               <F label="House"><input value={bio.house} onChange={(e) => set("house", e.target.value)} className={inputCls} placeholder="Emerald / Green" /></F>
               <F label="Religion"><input value={bio.religion} onChange={(e) => set("religion", e.target.value)} className={inputCls} placeholder="Christianity / Islam" /></F>

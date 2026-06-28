@@ -15,7 +15,7 @@ export function StudentResults({ studentId, academics, canManage, onChanged }: {
   return (
     <div className="grid gap-4">
       {err && <div className="rounded-[10px] border border-[#f3c2c2] bg-[#fdeeee] px-3 py-2 text-[12px] font-bold text-[#b3261e]">{err}</div>}
-      {canManage && <div className="flex justify-end"><button onClick={() => setAdding((v) => !v)} className="inline-flex items-center gap-1.5 rounded-[9px] border border-border-soft bg-white px-3 py-1.5 text-[12px] font-extrabold text-brand-blue transition hover:bg-brand-soft">{adding ? "Close" : "＋ Record result"}</button></div>}
+      {canManage && <div className="flex justify-end"><button onClick={() => setAdding((v) => !v)} className="inline-flex items-center gap-1.5 rounded-[9px] border border-border-soft bg-white px-3 py-1.5 text-[12px] font-extrabold text-brand-blue transition hover:bg-brand-soft">{adding ? "✕ Close" : "＋ Record result"}</button></div>}
       {adding && <ResultForm studentId={studentId} onSaved={onChanged} onErr={setErr} />}
       {academics.length === 0 ? <div className="grid place-items-center rounded-2xl border border-dashed border-border-soft bg-white py-12 text-center text-[12px] text-ink-soft">No results recorded yet.{canManage ? " Use “Record result” to add scores." : ""}</div>
         : <div className="grid gap-4 lg:grid-cols-2">{academics.map((t) => <TermSheet key={t.term} t={t} canManage={canManage} studentId={studentId} onChanged={onChanged} />)}</div>}
