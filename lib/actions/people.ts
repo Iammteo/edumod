@@ -16,7 +16,7 @@ import { generateStaffId } from "@/lib/identity/staff-id";
 import { isLockedOut, recordFailure, clearFailures } from "@/lib/rate-limit";
 import { sendSchoolCodeEmail, sendEmail } from "@/lib/email";
 
-// Better Auth's password hasher (internal) — used so directly-inserted credential rows verify
+// Better Auth's password hasher (internal) - used so directly-inserted credential rows verify
 // correctly at sign-in. Cast because $context is not fully typed for this access.
 export async function hashPassword(plain: string): Promise<string> {
   const ctx = (await auth.$context) as unknown as { password: { hash(p: string): Promise<string> } };
@@ -25,7 +25,7 @@ export async function hashPassword(plain: string): Promise<string> {
 
 type Result = { ok: true } | { error: string };
 
-// Postgres unique_violation — signals a school code / slug collision so we regenerate.
+// Postgres unique_violation - signals a school code / slug collision so we regenerate.
 function isUniqueViolation(e: unknown): boolean {
   return typeof e === "object" && e !== null && (e as { code?: string }).code === "23505";
 }
@@ -39,7 +39,7 @@ async function context() {
   return { userId: session.user.id, schoolId: m.schoolId, role: m.role, school: school ?? null };
 }
 
-// Called right after an admin signs up — creates the organization + membership, then
+// Called right after an admin signs up - creates the organization + membership, then
 // generates a unique school code and emails it to the admin. The code is system-assigned
 // (the admin never picks it). Race-safe: regenerate on a unique-constraint collision.
 export async function registerOrganization(input: { schoolName: string; state: string; country: string; address: string }): Promise<{ ok: true; schoolCode: string } | { error: string }> {
@@ -79,7 +79,7 @@ export async function registerOrganization(input: { schoolName: string; state: s
       void sendSchoolCodeEmail(session.user.email, name, code).catch((e) => console.error("[email] school code send failed:", e));
       return { ok: true, schoolCode: code };
     } catch (e) {
-      if (isUniqueViolation(e)) continue; // code or slug collided — try a new code
+      if (isUniqueViolation(e)) continue; // code or slug collided - try a new code
       return { error: "Could not create the organization. Please try again." };
     }
   }
@@ -148,12 +148,12 @@ export async function inviteStaff(input: InviteStaffInput): Promise<{ ok: true; 
     void sendEmail({
       to: email,
       subject: `You're invited to join ${ctx.school?.name ?? "your school"} on Edumod`,
-      text: `Hi ${input.name.trim()},\n\nYou've been invited to join ${ctx.school?.name ?? "your school"} on Edumod${input.jobRole ? ` as a ${input.jobRole}` : ""}.\n\nYour Staff ID is ${staffId}. Once you've set your password you can sign in with either your Staff ID or your email.\n\nGet started by setting your password and completing your profile:\n${link}\n\nThis link is personal to you — please don't share it.`,
+      text: `Hi ${input.name.trim()},\n\nYou've been invited to join ${ctx.school?.name ?? "your school"} on Edumod${input.jobRole ? ` as a ${input.jobRole}` : ""}.\n\nYour Staff ID is ${staffId}. Once you've set your password you can sign in with either your Staff ID or your email.\n\nGet started by setting your password and completing your profile:\n${link}\n\nThis link is personal to you - please don't share it.`,
     }).catch((e) => console.error("[email] staff invite send failed:", e));
     await logAudit({ schoolId: ctx.schoolId, actorUserId: ctx.userId, action: "staff.invited", entityType: "Staff", entityId: userId, metadata: { name: input.name.trim(), role: input.role, staffId } });
     return { ok: true, staffId };
   } catch {
-    return { error: "Could not invite this staff member — the email may already be in use." };
+    return { error: "Could not invite this staff member - the email may already be in use." };
   }
 }
 
@@ -176,7 +176,7 @@ export async function createStudent(input: { name: string; className?: string })
     const hash = await hashPassword(password);
     const userId = randomUUID();
     const now = new Date();
-    // All four inserts succeed or none do — no orphaned user/account/membership on a partial failure.
+    // All four inserts succeed or none do - no orphaned user/account/membership on a partial failure.
     const admissionNo = await db.transaction(async (tx) => {
       let no = "";
       for (let i = 0; i < 12; i++) {
@@ -199,7 +199,7 @@ export async function createStudent(input: { name: string; className?: string })
   }
 }
 
-// Admin/teacher resets a student's password (students can't self-reset — no email). Returns the
+// Admin/teacher resets a student's password (students can't self-reset - no email). Returns the
 // new one-time password to hand over.
 export async function resetStudentPassword(input: { studentId: string }): Promise<{ ok: true; studentName: string; password: string } | { error: string }> {
   const ctx = await context();
@@ -235,7 +235,7 @@ export async function setStaffStatus(userId: string, status: "active" | "inactiv
 }
 
 // Permanently removes a staff member (account, membership, profile). Blocked for admins and for
-// staff who have recorded/approved payments (keeps the financial trail intact — mark them "left" instead).
+// staff who have recorded/approved payments (keeps the financial trail intact - mark them "left" instead).
 export async function removeStaff(userId: string): Promise<{ ok: true } | { error: string }> {
   const ctx = await context();
   if (!ctx?.schoolId || ctx.role !== "school_admin") return { error: "Only an admin can remove staff." };
@@ -272,7 +272,7 @@ export async function studentLogin(input: { schoolCode: string; studentId: strin
   }
 }
 
-// Staff sign-in with a Staff ID (the Better Auth username) + password — an alternative to email.
+// Staff sign-in with a Staff ID (the Better Auth username) + password - an alternative to email.
 // Same per-account + per-IP lockout as students; uniform error so it doesn't reveal valid IDs.
 export async function staffLogin(input: { staffId: string; password: string }): Promise<{ ok: true } | { error: string }> {
   const h = await headers();

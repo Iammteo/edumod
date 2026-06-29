@@ -82,7 +82,7 @@ export async function getFinanceData(): Promise<FinanceData | { error: string }>
     const amt = Number(r.amount);
     if (r.status === "approved") { collected += amt; receiptsIssued += 1; if (new Date(r.createdAt) >= monthStart) thisMonth += amt; }
     if (r.status === "pending_approval") { pending += amt; pendingCount += 1; }
-    return { id: r.id, student: `${r.sf} ${r.sl}`.trim(), admissionNo: r.admissionNo, amount: amt, method: r.method, status: r.status, recordedBy: r.recordedBy ?? "—", approver: r.status === "approved" ? r.approverName ?? null : null, mine: r.recordedByUserId === c.userId, date: new Date(r.createdAt).toLocaleDateString(), description: r.description, proofKey: r.proofKey, receiptKey: r.receiptKey };
+    return { id: r.id, student: `${r.sf} ${r.sl}`.trim(), admissionNo: r.admissionNo, amount: amt, method: r.method, status: r.status, recordedBy: r.recordedBy ?? "-", approver: r.status === "approved" ? r.approverName ?? null : null, mine: r.recordedByUserId === c.userId, date: new Date(r.createdAt).toLocaleDateString(), description: r.description, proofKey: r.proofKey, receiptKey: r.receiptKey };
   });
 
   // Per-invoice reconciliation: how much approved money has been applied to each invoice.

@@ -68,7 +68,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
         const su = await signUp.email({ name, email, password, accountType: "admin" });
         if (su.error) {
           // The account may already exist from a half-finished signup. Sign in (with the same
-          // password) and continue — registerOrganization is idempotent, so it completes the org.
+          // password) and continue - registerOrganization is idempotent, so it completes the org.
           const si = await signIn.email({ email, password });
           if (si.error) throw new Error("An account with this email already exists. Please log in instead.");
         }
@@ -166,7 +166,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
           <Link href="/" aria-label="Edumod home"><Logo inverse /></Link>
           <div className="mt-auto">
             <h2 className="font-display text-[40px] font-extrabold leading-[1.05] tracking-[-.03em]">{isLogin ? "Welcome back to clarity." : "Set up your school in minutes."}</h2>
-            <p className="mt-4 max-w-md text-[15px] leading-relaxed text-blue-100">{isLogin ? "Sign in to pick up where you left off — attendance, finance, results and communication, all in one place." : "Create your organization, then invite your staff and add students from your dashboard."}</p>
+            <p className="mt-4 max-w-md text-[15px] leading-relaxed text-blue-100">{isLogin ? "Sign in to pick up where you left off - attendance, finance, results and communication, all in one place." : "Create your organization, then invite your staff and add students from your dashboard."}</p>
             <div className="mt-8 flex flex-wrap gap-2.5">
               {["Attendance", "Finance", "Results", "Communication", "Audit trail"].map((t, i) => <span key={t} style={{ animationDelay: `${i * 0.12}s` }} className="rounded-full border border-white/20 bg-white/10 px-3.5 py-1.5 text-[12px] font-bold backdrop-blur motion-safe:animate-[fade-up_.6s_ease_both]">{t}</span>)}
             </div>
@@ -277,7 +277,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
             <button type="submit" disabled={!!sending} className="mt-1 inline-flex min-h-12 items-center justify-center gap-2 rounded-[12px] bg-brand-blue px-5 text-[14px] font-extrabold text-white shadow-[0_8px_18px_rgba(33,89,232,.22)] transition hover:-translate-y-0.5 hover:bg-brand-dark disabled:opacity-70">{sending === "email" ? <Spinner light /> : (isLogin ? "Log in" : "Create organization")}</button>
           </form>
 
-          {!isLogin && <p className="mt-3 text-[12px] leading-relaxed text-ink-soft">Signing up creates an <strong className="text-ink">admin</strong> account. We&rsquo;ll email you a unique <strong className="text-ink">school code</strong> — staff and students use it to log in. Add them later from your dashboard.</p>}
+          {!isLogin && <p className="mt-3 text-[12px] leading-relaxed text-ink-soft">Signing up creates an <strong className="text-ink">admin</strong> account. We&rsquo;ll email you a unique <strong className="text-ink">school code</strong> - staff and students use it to log in. Add them later from your dashboard.</p>}
 
           <p className="mt-6 text-center text-[11px] leading-relaxed text-ink-soft">By continuing you agree to Edumod&rsquo;s <Link className="underline hover:text-brand-blue" href="/terms">Terms</Link> and <Link className="underline hover:text-brand-blue" href="/privacy">Privacy Policy</Link>.</p>
           </>

@@ -98,7 +98,7 @@ export function RecordResults({ classStudents }: { classStudents: { id: string; 
     setMsg({ ok: "Saved ✓" }); setSubject(""); setCa(""); setExam("");
   }
 
-  if (classStudents.length === 0) return <p className="text-[12px] text-ink-soft">No students in your class yet — ask your admin to assign them.</p>;
+  if (classStudents.length === 0) return <p className="text-[12px] text-ink-soft">No students in your class yet - ask your admin to assign them.</p>;
   return (
     <form onSubmit={save} className="grid gap-2.5">
       <datalist id="subj">{SUBJECTS.map((s) => <option key={s} value={s} />)}</datalist>

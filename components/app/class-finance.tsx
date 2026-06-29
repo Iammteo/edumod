@@ -46,7 +46,7 @@ export function ClassFinanceView({ onViewInvoices }: { onViewInvoices?: () => vo
     setExporting(false);
     if ("error" in r) { setErr(r.error); return; }
     const allowed = new Set(filtered.map((c) => c.className));
-    const rows = r.filter((s) => allowed.has(s.className)).map((s) => ({ class: s.className, student: s.student, guardian: s.guardian || "—", phone: s.phone || "—", paid: naira(s.paid), outstanding: naira(s.outstanding), status: s.status }));
+    const rows = r.filter((s) => allowed.has(s.className)).map((s) => ({ class: s.className, student: s.student, guardian: s.guardian || "-", phone: s.phone || "-", paid: naira(s.paid), outstanding: naira(s.outstanding), status: s.status }));
     const columns = [{ key: "class", label: "Class" }, { key: "student", label: "Student" }, { key: "guardian", label: "Guardian" }, ...(includePhone ? [{ key: "phone", label: "Parent phone" }] : []), { key: "paid", label: "Amount paid" }, { key: "outstanding", label: "Outstanding" }, { key: "status", label: "Status" }];
     const scope = level === "All" ? "all classes" : level;
     exportReport(format, { title: "Outstanding students report", subtitle: `${scope} · ${rows.length} students · generated ${new Date().toLocaleDateString()}`, columns, rows, filename: `outstanding-${level.toLowerCase()}` });
@@ -114,7 +114,7 @@ export function ClassFinanceView({ onViewInvoices }: { onViewInvoices?: () => vo
                   <td className="py-2.5 font-extrabold text-[#b3261e]">{naira(c.outstanding)}</td>
                   <td className="py-2.5"><div className="flex items-center gap-1.5"><span className="h-1.5 w-12 overflow-hidden rounded-full bg-paper"><span className="block h-full rounded-full" style={{ width: `${Math.min(100, c.rate)}%`, backgroundColor: c.rate >= 60 ? "#178a4c" : "#2159e8" }} /></span><span className="text-[10px] font-bold text-ink-soft">{c.rate}%</span></div></td>
                   <td className="py-2.5"><span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${sc}`}>{sl}</span></td>
-                  <td className="hidden py-2.5 text-ink-soft md:table-cell">{c.lastPayment ?? "—"}</td>
+                  <td className="hidden py-2.5 text-ink-soft md:table-cell">{c.lastPayment ?? "-"}</td>
                 </tr>); })}</tbody>
             </table></div>
           )}
@@ -139,11 +139,11 @@ export function ClassFinanceView({ onViewInvoices }: { onViewInvoices?: () => vo
               <tbody>{studentsFiltered.slice(0, 12).map((s) => { const [sl, sc] = stuPill(s.status); return (
                 <tr key={s.id} className="border-b border-border-soft last:border-0 hover:bg-paper/60">
                   <td className="py-2.5"><div className="flex items-center gap-2.5"><span className="grid size-7 shrink-0 place-items-center rounded-full text-[10px] font-extrabold text-white" style={{ backgroundColor: AV[s.name.length % AV.length] }}>{initials(s.name)}</span><span className="font-bold text-ink">{s.name}</span></div></td>
-                  <td className="hidden py-2.5 sm:table-cell"><div className="text-ink-soft">{s.guardian || "—"}</div><div className="text-[10px] text-ink-soft">{s.guardianPhone}</div></td>
+                  <td className="hidden py-2.5 sm:table-cell"><div className="text-ink-soft">{s.guardian || "-"}</div><div className="text-[10px] text-ink-soft">{s.guardianPhone}</div></td>
                   <td className="py-2.5 font-bold text-ink">{naira(s.paid)}</td>
                   <td className={`py-2.5 font-extrabold ${s.outstanding > 0 ? "text-[#b3261e]" : "text-brand-green"}`}>{naira(s.outstanding)}</td>
                   <td className="py-2.5"><span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${sc}`}>{sl}</span></td>
-                  <td className="hidden py-2.5 text-ink-soft md:table-cell">{s.lastPayment ?? "—"}</td>
+                  <td className="hidden py-2.5 text-ink-soft md:table-cell">{s.lastPayment ?? "-"}</td>
                 </tr>); })}</tbody>
             </table></div>
           )}

@@ -6,8 +6,9 @@ import { signOut } from "@/lib/auth/client";
 import { AddStudentForm, ResetStudentPasswordForm } from "./people-forms";
 import { BarChart, DonutChart } from "./charts";
 import { InviteWizard } from "./invite-wizard";
-import { FinanceView } from "./finance-view";
-import { ClassFinanceView } from "./class-finance";
+import { FinanceArea, type FinanceSection } from "./finance-view";
+
+const FINANCE_SUB: [FinanceSection, string][] = [["overview", "Overview"], ["record", "Record payment"], ["approvals", "Approvals"], ["bills", "Bills & fee structures"], ["invoices", "Invoices & receipts"], ["classsummary", "Class finance summary"], ["overpayments", "Overpayments & refunds"], ["reports", "Reports & exports"]];
 import { StudentProfilePage } from "./student-profile";
 import { EmptyArt } from "./illustration";
 import { CalendarCard } from "./calendar";
@@ -16,6 +17,7 @@ import { ClassManager } from "./class-manager";
 import { StaffClockInView } from "./attendance-view";
 import { StudentAttendanceView } from "./student-attendance-view";
 import { updateSchoolProfile, uploadSchoolLogo, removeSchoolLogo } from "@/lib/actions/school";
+import { listAcademicTerms, createAcademicTerm, deleteAcademicTerm, setCurrentPeriod, type SessionTerm } from "@/lib/actions/academics";
 import { setStaffStatus, removeStaff } from "@/lib/actions/people";
 import { AREAS, AREA_LABELS, LEVELS, type Level } from "@/lib/permissions";
 import type { AdminOverview } from "@/lib/dashboard";
@@ -51,12 +53,15 @@ const ICONS: Record<string, React.ReactNode> = {
   attendance: <><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></>,
   finance: <><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /><path d="M6 12h.01M18 12h.01" /></>,
   messages: <><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></>,
+  communications: <><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></>,
+  exams: <><path d="M9 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2h-3" /><rect x="8" y="2" width="8" height="4" rx="1" /><path d="m9 14 2 2 4-4" /></>,
+  timetable: <><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></>,
   reports: <><path d="M3 3v18h18" /><path d="M7 14l3-3 3 3 5-5" /></>,
   profile: <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="2" /><path d="M15 8h3M15 12h3M7 16h10" /></>,
   settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-2.82 1.17V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8.4l.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 11 4.6V4.5a2 2 0 0 1 4 0v.09A1.65 1.65 0 0 0 19 5.4a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 11V11a2 2 0 0 1 0 4Z" /></>,
   audit: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h4" /></>,
 };
-const NAV: [string, string, number?][] = [["overview", "Overview"], ["students", "Students"], ["staff", "Staff"], ["attendance", "Attendance"], ["finance", "Finance"], ["messages", "Messages", 3], ["reports", "Reports"], ["settings", "Settings"], ["audit", "Audit log"]];
+const NAV: [string, string, number?][] = [["overview", "Overview"], ["students", "Classes"], ["staff", "Staff"], ["attendance", "Attendance"], ["finance", "Finance"], ["exams", "Exams"], ["timetable", "Timetable"], ["reports", "Grade and reports"], ["communications", "Communications"], ["settings", "Settings"], ["audit", "Audit log"]];
 
 function initials(name: string) { return name.split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase(); }
 const AV_COLORS = ["#2159e8", "#178a4c", "#b9540f", "#6b2fb3", "#0d8aa8"];
@@ -64,6 +69,7 @@ function Avatar({ name, size = 30 }: { name: string; size?: number }) { const c 
 
 export function AdminApp({ userName, school, students, staff, audit, overview, initialSection = "overview" }: Props) {
   const [active, setActive] = useState(initialSection);
+  const [financeSection, setFinanceSection] = useState<FinanceSection>("overview");
   const [open, setOpen] = useState(false);
   const [logo, setLogo] = useState<string | null>(school.logoKey);
   const [details, setDetails] = useState(school);
@@ -77,49 +83,137 @@ export function AdminApp({ userName, school, students, staff, audit, overview, i
 
   const sidebar = (
     <>
-      <div className="flex items-center gap-2.5 px-1 font-display text-[21px] font-semibold text-white">
-        {logo ? <img src={logo} alt="" className="size-7 rounded-md object-cover" /> : <span className="grid size-6 rotate-45 place-items-center border-2 border-brand-green"><i className="size-[7px] border-2 border-brand-green" /></span>}Edumod
+      {/* Full-bleed logo: spans the entire width of the sidebar header (and bleeds into the top padding). */}
+      <div className="-mx-4 -mt-[20px] mb-[14px] overflow-hidden bg-white/[0.06]">
+        <div className="aspect-[4/3] w-full">
+          {logo ? <img src={logo} alt="" className="size-full object-cover" /> : <div className="grid size-full place-items-center"><span className="grid size-20 rotate-45 place-items-center border-2 border-brand-green"><i className="size-5 border-2 border-brand-green" /></span></div>}
+        </div>
+        <div className="px-4 pb-3.5 pt-2 text-center">
+          <div className="line-clamp-2 font-display text-[17px] font-bold leading-tight text-white">{details.name}</div>
+          <div className="mt-0.5 text-[11px] text-[#9fb6d8]">Excellence in Education</div>
+        </div>
       </div>
-      <div className="my-[16px] rounded-[10px] border border-white/15 p-3 text-[11px] text-[#eef4ff]"><strong className="line-clamp-1">{details.name}</strong>{details.currentSession} · {details.currentTerm}<div className="mt-2 flex items-center justify-between border-t border-white/10 pt-2"><span className="text-[#9fb6d8]">School code</span><code className="select-all font-extrabold tracking-wide text-white">{school.schoolCode}</code></div></div>
-      <nav className="grid gap-0.5 overflow-y-auto">
+      <nav className="grid min-h-0 flex-1 content-start gap-0.5 overflow-y-auto">
         {NAV.map(([key, label, badge]) => (
-          <button key={key} onClick={() => { setActive(key); setOpen(false); }} className={`flex items-center gap-2.5 rounded-[9px] px-3 py-2 text-[13px] font-bold transition ${active === key ? "bg-[#174e97] text-white" : "text-[#ced9eb] hover:bg-white/10"}`}>
-            {I(ICONS[key])}<span className="flex-1 text-left">{label}</span>{badge && <span className="grid size-[18px] place-items-center rounded-full bg-brand-green text-[9px] text-white">{badge}</span>}
-          </button>
+          <div key={key}>
+            <button onClick={() => { setActive(key); if (key !== "finance") setOpen(false); }} className={`flex w-full items-center gap-2.5 rounded-[9px] px-3 py-2 text-[13px] font-bold transition ${active === key ? "bg-[#174e97] text-white" : "text-[#ced9eb] hover:bg-white/10"}`}>
+              {I(ICONS[key])}<span className="flex-1 text-left">{label}</span>{key === "finance" ? <span className={`transition ${active === "finance" ? "rotate-180" : ""}`}>{I(<path d="m6 9 6 6 6-6" />)}</span> : badge ? <span className="grid size-[18px] place-items-center rounded-full bg-brand-green text-[9px] text-white">{badge}</span> : null}
+            </button>
+            {key === "finance" && active === "finance" && (
+              <div className="mb-1 mt-0.5 grid gap-0.5 border-l border-white/10 pl-3.5">
+                {FINANCE_SUB.map(([sk, sl]) => (
+                  <button key={sk} onClick={() => { setFinanceSection(sk); setOpen(false); }} className={`flex items-center gap-2 rounded-[8px] px-3 py-1.5 text-left text-[12px] font-bold transition ${financeSection === sk ? "bg-white/10 text-white" : "text-[#9fb6d8] hover:bg-white/5 hover:text-white"}`}><span className={`size-1.5 rounded-full ${financeSection === sk ? "bg-brand-green" : "bg-white/20"}`} />{sl}</button>
+                ))}
+              </div>
+            )}
+          </div>
         ))}
       </nav>
-      <div className="mt-auto flex items-center gap-2.5 border-t border-white/15 pt-3.5"><Avatar name={userName} size={34} /><div className="min-w-0 flex-1 text-[11px] text-white"><div className="truncate font-bold">{userName}</div><div className="text-[#9fb6d8]">School Admin</div></div><button onClick={logout} aria-label="Sign out" title="Sign out" className="grid size-8 place-items-center rounded-lg text-[#9fb6d8] transition hover:bg-white/10 hover:text-white">{I(<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></>)}</button></div>
+      <div className="mt-auto border-t border-white/15 pt-3.5">
+        <div className="flex items-center gap-2.5"><Avatar name={userName} size={34} /><div className="min-w-0 flex-1 text-[11px] text-white"><div className="truncate font-bold">{userName}</div><div className="text-[#9fb6d8]">School Admin</div></div></div>
+        <SupportMenu />
+        {/* Sign out is in the top-right account menu on desktop; surface it in the drawer on mobile. */}
+        <button onClick={logout} className="mt-1 flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-[12px] font-bold text-[#ced9eb] transition hover:bg-white/10 hover:text-white lg:hidden">{I(<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></>)}<span className="flex-1 text-left">Sign out</span></button>
+      </div>
     </>
   );
 
   return (
     <div className="grid min-h-screen bg-paper lg:grid-cols-[244px_1fr]">
-      <aside className="hidden flex-col bg-ink px-4 py-[20px] lg:flex">{sidebar}</aside>
+      <aside className="hidden flex-col bg-ink px-4 py-[20px] lg:flex lg:sticky lg:top-0 lg:h-screen">{sidebar}</aside>
       {open && <div className="fixed inset-0 z-50 lg:hidden"><div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} /><aside className="absolute left-0 top-0 flex h-full w-[min(260px,85vw)] flex-col overflow-y-auto bg-ink px-4 py-[20px] motion-safe:animate-[fade-up_.2s_ease]">{sidebar}</aside></div>}
 
       <div className="flex min-w-0 flex-col">
+        <header className="sticky top-0 z-30 hidden items-center justify-end gap-1.5 border-b border-border-soft bg-white/95 px-7 py-2.5 backdrop-blur lg:flex">
+          <button onClick={() => setActive("settings")} aria-label="Settings" title="Settings" className="grid size-10 place-items-center rounded-full text-ink-soft transition hover:bg-paper hover:text-brand-blue">{I(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>)}</button>
+          <NotifBell open={notifOpen} setOpen={setNotifOpen} audit={audit} onViewAll={() => setActive("audit")} onNavigate={onNotif} />
+          <div className="mx-1 h-7 w-px bg-border-soft" />
+          <UserMenu userName={userName} onSettings={() => setActive("settings")} onLogout={logout} />
+        </header>
         <header className="flex items-center justify-between gap-3 border-b border-border-soft bg-white px-4 py-3 lg:hidden">
           <button onClick={() => setOpen(true)} aria-label="Open menu" className="grid size-10 place-items-center rounded-[10px] border border-border-soft">{I(<><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" /></>)}</button>
           <span className="font-display text-[18px] font-semibold">{NAV.find((n) => n[0] === active)?.[1]}</span>
-          <NotifBell open={notifOpen} setOpen={setNotifOpen} audit={audit} onViewAll={() => setActive("audit")} onNavigate={onNotif} />
+          <div className="flex items-center gap-1.5">
+            <NotifBell open={notifOpen} setOpen={setNotifOpen} audit={audit} onViewAll={() => setActive("audit")} onNavigate={onNotif} />
+            <UserMenu userName={userName} onSettings={() => setActive("settings")} onLogout={logout} />
+          </div>
         </header>
 
-        <main className="overflow-x-hidden p-4 sm:p-6 lg:px-7 lg:py-6">
-          {active === "overview" && <Overview userName={userName} school={details} students={students} staff={staff} audit={audit} overview={overview} notifOpen={notifOpen} setNotifOpen={setNotifOpen} goto={navigate} onNotif={onNotif} />}
+        <main className="overflow-x-hidden p-4 pb-24 sm:p-6 sm:pb-24 lg:px-7 lg:py-6 lg:pb-6">
+          {active === "overview" && <Overview userName={userName} school={details} students={students} staff={staff} audit={audit} overview={overview} notifOpen={notifOpen} setNotifOpen={setNotifOpen} goto={navigate} onNotif={onNotif} onSchoolChange={(patch) => setDetails((d) => ({ ...d, ...patch }))} />}
           {active === "students" && <Students students={students} openStudentId={deepStudent} onConsumed={() => setDeepStudent(null)} />}
           {active === "staff" && <StaffView staff={staff} />}
           {active === "settings" && <Settings school={details} logo={logo} onLogo={setLogo} onSaved={setDetails} />}
           {active === "audit" && <AuditLog audit={audit} />}
-          {active === "finance" && <FinanceArea />}
+          {active === "finance" && <FinanceArea section={financeSection} />}
           {active === "attendance" && <StudentAttendanceView />}
-          {["messages", "reports"].includes(active) && <ComingSoon name={NAV.find((n) => n[0] === active)![1]} />}
+          {["exams", "timetable", "communications", "reports"].includes(active) && <ComingSoon name={NAV.find((n) => n[0] === active)![1]} />}
         </main>
+
+        {/* Mobile bottom tab bar - quick access to the top sections; "More" opens the full drawer. */}
+        <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border-soft bg-white/95 backdrop-blur lg:hidden">
+          {([
+            ["overview", "Overview", <><path key="a" d="M3 9.5 12 3l9 6.5" /><path key="b" d="M5 10v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V10" /></>, false],
+            ["students", "Classes", ICONS.students, false],
+            ["finance", "Finance", ICONS.finance, false],
+            ["reports", "Reports", ICONS.reports, false],
+            ["__more", "More", <><circle key="a" cx="5" cy="12" r="1.6" /><circle key="b" cx="12" cy="12" r="1.6" /><circle key="c" cx="19" cy="12" r="1.6" /></>, true],
+          ] as [string, string, React.ReactNode, boolean][]).map(([key, label, icon, filled]) => {
+            const isMore = key === "__more";
+            const act = isMore ? !["overview", "students", "finance", "reports"].includes(active) : active === key;
+            return (
+              <button key={key} onClick={() => { if (isMore) setOpen(true); else { setActive(key); window.scrollTo(0, 0); } }} className={`flex flex-col items-center gap-1 py-2 text-[10px] font-bold transition ${act ? "text-brand-blue" : "text-ink-soft"}`}>
+                <svg viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="size-[22px]">{icon}</svg>
+                {label}
+              </button>
+            );
+          })}
+        </nav>
       </div>
     </div>
   );
 }
 
 /* ---------- shared ---------- */
+const SUPPORT_EMAIL = "support@edumod.app";
+const HELP_URL = "https://edumod.app/help";
+// Sits at the foot of the sidebar (sign-out now lives in the top-right account menu). Opens a
+// popover upward with the common support actions.
+function SupportMenu() {
+  const [open, setOpen] = useState(false);
+  const item = "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-bold transition";
+  return (
+    <div className="relative mt-2">
+      <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-[12px] font-bold text-[#ced9eb] transition hover:bg-white/10 hover:text-white">
+        {I(<><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" /></>)}
+        <span className="flex-1 text-left">Help &amp; support</span>
+        <span className={`transition ${open ? "rotate-180" : ""}`}>{I(<path d="m18 15-6-6-6 6" />)}</span>
+      </button>
+      {open && <><div className="fixed inset-0 z-40" onClick={() => setOpen(false)} /><div className="absolute bottom-12 left-0 z-50 w-56 rounded-xl border border-border-soft bg-white p-1.5 shadow-[0_20px_50px_rgba(16,33,63,.28)] motion-safe:animate-[fade-up_.2s_ease]">
+        <p className="px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">Help &amp; support</p>
+        <a href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Edumod support request")}`} onClick={() => setOpen(false)} className={`${item} text-ink hover:bg-paper`}>{I(<><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-10 5L2 7" /></>)} Email support</a>
+        <a href={HELP_URL} target="_blank" rel="noreferrer" onClick={() => setOpen(false)} className={`${item} text-ink hover:bg-paper`}>{I(<><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></>)} Help &amp; guides</a>
+        <a href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Edumod bug report")}`} onClick={() => setOpen(false)} className={`${item} text-[#b3261e] hover:bg-[#fdeeee]`}>{I(<><path d="m8 2 1.88 1.88M14.12 3.88 16 2M9 7.13v-1a3.003 3.003 0 1 1 6 0v1" /><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6zM12 20v-9M6.53 9C4.6 8.8 3 7.1 3 5M6 13H2M3 21c0-2.1 1.7-3.9 3.8-4M20.97 5c0 2.1-1.6 3.8-3.5 4M22 13h-4M17.2 17c2.1.1 3.8 1.9 3.8 4" /></>)} Report a problem</a>
+      </div></>}
+    </div>
+  );
+}
+function UserMenu({ userName, onSettings, onLogout }: { userName: string; onSettings: () => void; onLogout: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen((v) => !v)} aria-label="Account menu" className="flex items-center gap-2.5 rounded-full py-1 pl-1 pr-2 transition hover:bg-paper">
+        <Avatar name={userName} size={34} />
+        <span className="hidden text-left sm:block"><span className="block max-w-[140px] truncate text-[12px] font-bold leading-tight text-ink">{userName}</span><span className="block text-[11px] leading-tight text-ink-soft">School Admin</span></span>
+        <span className={`text-ink-soft transition ${open ? "rotate-180" : ""}`}>{I(<path d="m6 9 6 6 6-6" />)}</span>
+      </button>
+      {open && <><div className="fixed inset-0 z-40" onClick={() => setOpen(false)} /><div className="absolute right-0 top-12 z-50 w-48 rounded-xl border border-border-soft bg-white p-1.5 shadow-[0_20px_50px_rgba(16,33,63,.16)] motion-safe:animate-[fade-up_.2s_ease]">
+        <button onClick={() => { setOpen(false); onSettings(); }} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12px] font-bold text-ink transition hover:bg-paper">{I(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>)} Settings</button>
+        <button onClick={() => { setOpen(false); onLogout(); }} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12px] font-bold text-[#b3261e] transition hover:bg-[#fdeeee]">{I(<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></>)} Sign out</button>
+      </div></>}
+    </div>
+  );
+}
 function Head({ title, subtitle, action }: { title: string; subtitle: string; action?: React.ReactNode }) {
   return <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><h1 className="font-display text-[clamp(21px,3.5vw,28px)] font-semibold leading-tight">{title}</h1><p className="mt-0.5 text-[13px] text-ink-soft">{subtitle}</p></div>{action}</div>;
 }
@@ -157,85 +251,240 @@ function NotifBell({ open, setOpen, audit, onViewAll, onNavigate }: { open: bool
   );
 }
 
-/* ---------- Finance area (Payments dashboard + Class summary) ---------- */
-function FinanceArea() {
-  const [view, setView] = useState<"payments" | "classes">("payments");
-  return (
-    <>
-      <div className="mb-4 inline-flex rounded-[12px] border border-border-soft bg-white p-1">
-        {([["payments", "Payments & approvals"], ["classes", "Class summary"]] as const).map(([k, label]) => <button key={k} onClick={() => setView(k)} className={`rounded-[9px] px-3.5 py-1.5 text-[12px] font-extrabold transition ${view === k ? "bg-brand-blue text-white" : "text-ink-soft hover:text-brand-blue"}`}>{label}</button>)}
-      </div>
-      {view === "payments" ? <FinanceView /> : <ClassFinanceView />}
-    </>
-  );
-}
-
 /* ---------- Overview ---------- */
 const naira = (n: number) => `₦${n.toLocaleString()}`;
 const compactN = (n: number) => (n >= 1_000_000 ? `₦${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M` : n >= 1000 ? `₦${(n / 1000).toFixed(0)}k` : `₦${n}`);
-function Overview({ userName, school, students, staff, audit, overview, notifOpen, setNotifOpen, goto, onNotif }: { userName: string; school: School; students: Student[]; staff: Staff[]; audit: Audit[]; overview: AdminOverview; notifOpen: boolean; setNotifOpen: (v: boolean) => void; goto: (s: string, studentId?: string) => void; onNotif: (a: Audit) => void }) {
+// Time-aware welcome banner. Uses the school's day / night illustrations (public/banner/*) as the
+// background, switching by the viewer's local time: morning & afternoon -> day, evening -> night.
+// Falls back to a tinted gradient if the image file isn't present yet.
+const BANNER_SCENES = {
+  day: { img: "/banner/day.png", base: "linear-gradient(120deg,#2159e8,#6f9bf2)", scrim: "linear-gradient(90deg,rgba(13,47,117,.72),rgba(13,47,117,.30) 45%,rgba(13,47,117,0) 72%)" },
+  night: { img: "/banner/night.png", base: "linear-gradient(120deg,#2a2766,#4a3f8c)", scrim: "linear-gradient(90deg,rgba(20,18,64,.85),rgba(20,18,64,.45) 45%,rgba(20,18,64,0) 72%)" },
+};
+function WelcomeBanner({ userName, school, onSchoolChange }: { userName: string; school: School; onSchoolChange: (patch: Partial<School>) => void }) {
+  const [hour, setHour] = useState<number | null>(null);
+  const [imgOk, setImgOk] = useState(true);
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [list, setList] = useState<SessionTerm[] | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [newSession, setNewSession] = useState(school.currentSession);
+  const [newTerm, setNewTerm] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { const set = () => setHour(new Date().getHours()); set(); const t = setInterval(set, 60_000); return () => clearInterval(t); }, []);
+  const reload = () => listAcademicTerms().then(setList);
+  useEffect(() => { reload(); }, []);
+  const h = hour ?? 9; // stable default for SSR / first paint (morning), corrected on mount
+  const isNight = h >= 17 || h < 5;
+  const word = h >= 5 && h < 12 ? "Good morning" : h >= 12 && h < 17 ? "Good afternoon" : "Good evening";
+  const scene = isNight ? BANNER_SCENES.night : BANNER_SCENES.day;
+
+  const groups = useMemo(() => {
+    const m = new Map<string, SessionTerm[]>();
+    for (const x of list ?? []) { const g = m.get(x.session) ?? (m.set(x.session, []), m.get(x.session)!); g.push(x); }
+    return [...m.entries()];
+  }, [list]);
+
+  async function pick(session: string, term: string) {
+    if (session === school.currentSession && term === school.currentTerm) { setOpen(false); return; }
+    setSaving(true); setErr(null);
+    const r = await setCurrentPeriod({ session, term });
+    setSaving(false);
+    if ("error" in r) { setErr(r.error); return; }
+    onSchoolChange({ currentSession: session, currentTerm: term });
+    setOpen(false); reload();
+  }
+  async function add() {
+    setErr(null);
+    const r = await createAcademicTerm({ session: newSession, term: newTerm });
+    if ("error" in r) { setErr(r.error); return; }
+    setNewTerm(""); setAdding(false); reload();
+  }
+  async function remove(session: string, term: string) {
+    setErr(null);
+    const r = await deleteAcademicTerm({ session, term });
+    if ("error" in r) { setErr(r.error); return; }
+    reload();
+  }
+
+  return (
+    <div className="relative mb-[18px] min-h-[200px] rounded-3xl sm:min-h-[230px]" style={{ background: scene.base }}>
+      {/* Background layer is clipped to the rounded corners; the content layer is NOT, so the dropdown can overflow the banner. */}
+      <div className="absolute inset-0 overflow-hidden rounded-3xl">
+        {imgOk && <img key={scene.img} src={scene.img} alt="" aria-hidden onError={() => setImgOk(false)} className="absolute inset-0 size-full object-cover object-right" />}
+        <div className="absolute inset-0" style={{ background: scene.scrim }} />
+      </div>
+      <div className="relative p-6 sm:p-8">
+        <h1 className="font-display text-[clamp(26px,5.4vw,40px)] font-extrabold leading-[1.06] tracking-[-.02em] text-white [text-shadow:0_2px_12px_rgba(0,0,0,.25)]">{word}, {userName.split(" ")[0]} {isNight ? "🌙" : "☀️"}</h1>
+        <p className="mt-2.5 max-w-[62%] text-[14px] leading-relaxed text-white/90 [text-shadow:0_1px_8px_rgba(0,0,0,.25)]">{school.currentTerm} · {school.currentSession} session · here&rsquo;s what&rsquo;s happening today.</p>
+        <div className="relative mt-4 inline-block">
+          <button onClick={() => setOpen((v) => !v)} disabled={saving} aria-haspopup="listbox" aria-expanded={open} className="inline-flex items-center gap-2 rounded-[12px] bg-white/95 px-3.5 py-2.5 text-[13px] font-bold text-ink shadow-[0_4px_14px_rgba(16,33,63,.18)] transition hover:bg-white disabled:opacity-70"><span className="text-brand-blue">{I(<><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></>)}</span>{school.currentSession} · {school.currentTerm}{saving ? <span className="inline-block size-3.5 animate-spin rounded-full border-2 border-ink-soft/30 border-t-ink-soft" /> : <span className={`transition ${open ? "rotate-180" : ""}`}>{I(<path d="m6 9 6 6 6-6" />)}</span>}</button>
+          {open && <><div className="fixed inset-0 z-40" onClick={() => { setOpen(false); setAdding(false); }} /><div className="absolute left-0 top-[calc(100%+6px)] z-50 max-h-[60vh] w-64 overflow-y-auto rounded-xl border border-border-soft bg-white p-1.5 text-ink shadow-[0_20px_50px_rgba(16,33,63,.2)] motion-safe:animate-[fade-up_.2s_ease]">
+            <p className="px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">Switch session &amp; term</p>
+            {list === null ? <p className="px-2 py-2 text-[12px] text-ink-soft">Loading…</p>
+              : groups.map(([session, terms]) => (
+                <div key={session} className="mb-1">
+                  <p className="px-2 pt-1.5 text-[10px] font-extrabold text-ink-soft">{session}</p>
+                  {terms.map((t) => (
+                    <div key={t.term} className={`group flex items-center gap-1 rounded-lg pr-1 ${t.current ? "bg-brand-soft" : "hover:bg-paper"}`}>
+                      <button onClick={() => pick(t.session, t.term)} className={`flex flex-1 items-center justify-between rounded-lg px-2.5 py-2 text-left text-[12px] font-bold ${t.current ? "text-brand-blue" : "text-ink"}`}>{t.term}{t.current && <span>✓</span>}</button>
+                      {!t.current && <button onClick={() => remove(t.session, t.term)} title="Remove" className="hidden size-6 shrink-0 place-items-center rounded text-ink-soft transition hover:bg-[#fdeeee] hover:text-[#b3261e] group-hover:grid">✕</button>}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            <div className="mt-1 border-t border-border-soft pt-1.5">
+              {adding ? (
+                <div className="grid gap-1.5 p-1.5">
+                  <input value={newSession} onChange={(e) => setNewSession(e.target.value)} placeholder="Session (e.g. 2024/2025)" className="min-h-8 rounded-lg border border-border-soft bg-paper/60 px-2 text-[12px] outline-none focus:border-brand-blue" />
+                  <input value={newTerm} onChange={(e) => setNewTerm(e.target.value)} placeholder="Term (e.g. Term 1)" className="min-h-8 rounded-lg border border-border-soft bg-paper/60 px-2 text-[12px] outline-none focus:border-brand-blue" />
+                  <div className="flex gap-1.5"><button onClick={add} disabled={!newSession.trim() || !newTerm.trim()} className="flex-1 rounded-lg bg-brand-blue px-2 py-1.5 text-[12px] font-extrabold text-white transition hover:bg-brand-dark disabled:opacity-60">Add</button><button onClick={() => setAdding(false)} className="rounded-lg px-2 py-1.5 text-[12px] font-bold text-ink-soft hover:text-ink">Cancel</button></div>
+                </div>
+              ) : (
+                <button onClick={() => { setAdding(true); setNewSession(school.currentSession); setNewTerm(""); }} className="flex w-full items-center gap-1.5 rounded-lg px-2.5 py-2 text-left text-[12px] font-extrabold text-brand-blue hover:bg-brand-soft">＋ New session / term</button>
+              )}
+            </div>
+            {err && <p className="px-2 py-1 text-[11px] font-bold text-[#b3261e]">{err}</p>}
+          </div></>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function feeTrendOf(series: { label: string; value: number }[]) {
+  const v = series.map((p) => p.value);
+  const last = v[v.length - 1], prev = v[v.length - 2];
+  if (prev === undefined || last === undefined || prev <= 0) return null;
+  const pct = Math.round((Math.abs(last - prev) / prev) * 100 * 10) / 10;
+  return { up: last >= prev, pct: `${pct}%`, note: "vs last month" };
+}
+type StatCardProps = { label: string; value: string; icon: React.ReactNode; color: string; meta: string; trend?: { up: boolean; pct: string; note: string } | null; onClick: () => void };
+function StatCard({ label, value, icon, color, meta, trend, onClick }: StatCardProps) {
+  return (
+    <button onClick={onClick} className="group relative overflow-hidden rounded-2xl border border-border-soft bg-white p-4 text-left transition hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(16,33,63,.08)]">
+      <span className="absolute right-3 top-3 text-ink-soft/40 transition group-hover:translate-x-0.5 group-hover:text-brand-blue">{I(<path d="m9 18 6-6-6-6" />)}</span>
+      <div className="flex items-start gap-3">
+        <span className="grid size-11 shrink-0 place-items-center rounded-2xl text-white" style={{ backgroundColor: color }}>{I(icon)}</span>
+        <div className="min-w-0 pr-4">
+          <strong className="block break-words font-display text-[clamp(19px,5vw,25px)] font-bold leading-none" style={{ color }}>{value}</strong>
+          <small className="mt-1.5 block font-bold text-ink">{label}</small>
+          <div className="mt-1 flex items-center gap-1.5 text-[10px] font-extrabold">
+            {trend && <span className={trend.up ? "text-brand-green" : "text-[#b3261e]"}>{trend.up ? "↑" : "↓"} {trend.pct}</span>}
+            <span className="text-ink-soft">{trend ? trend.note : meta}</span>
+          </div>
+        </div>
+      </div>
+      <span aria-hidden className="pointer-events-none absolute -bottom-3 -right-2 opacity-[0.06]" style={{ color }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.4} className="size-20">{icon}</svg></span>
+    </button>
+  );
+}
+
+function actStyle(action: string): { bg: string; color: string; icon: React.ReactNode } {
+  if (action.startsWith("payment")) return { bg: "#e7f6ee", color: "#178a4c", icon: ICONS.finance };
+  if (action.startsWith("attendance")) return { bg: "#e7f6ee", color: "#178a4c", icon: ICONS.attendance };
+  if (action.startsWith("student")) return { bg: "#e7eefc", color: "#2159e8", icon: ICONS.students };
+  if (action.startsWith("staff")) return { bg: "#fbeee3", color: "#b9540f", icon: ICONS.staff };
+  if (action.startsWith("result") || action.startsWith("grade")) return { bg: "#f0e9fa", color: "#6b2fb3", icon: ICONS.reports };
+  if (action.includes("event") || action.includes("class")) return { bg: "#e7eefc", color: "#2159e8", icon: ICONS.timetable };
+  return { bg: "#eef2f9", color: "#5b6b86", icon: ICONS.overview };
+}
+function ActivityRow({ a, onClick }: { a: Audit; onClick: () => void }) {
+  const s = actStyle(a.action);
+  return (
+    <button onClick={onClick} className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition hover:bg-paper/60">
+      <span className="grid size-9 shrink-0 place-items-center rounded-full" style={{ backgroundColor: s.bg, color: s.color }}>{I(s.icon)}</span>
+      <div className="min-w-0 flex-1"><strong className="block truncate text-[12px]">{a.detail || actLabel(a.action)}</strong><span className="text-[10px] text-ink-soft">{actLabel(a.action)} · {a.actor ?? "system"}</span></div>
+      <span className="shrink-0 text-[10px] text-ink-soft">{relTime(a.ts)}</span>
+    </button>
+  );
+}
+
+const BOOK_ICON = <><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></>;
+const SECTION_META: { label: string; sub: string; color: string; bg: string; match: (n: string) => boolean }[] = [
+  { label: "Primary School", sub: "Pre-KG to Primary 6", color: "#178a4c", bg: "#e7f6ee", match: (n) => /^(primary|pre|nursery|kg|basic)/i.test(n) },
+  { label: "Junior Secondary (JSS)", sub: "JSS 1 to JSS 3", color: "#2159e8", bg: "#e7eefc", match: (n) => /^(jss|junior)/i.test(n) },
+  { label: "Senior Secondary (SSS)", sub: "SSS 1 to SSS 3", color: "#6b2fb3", bg: "#f0e9fa", match: (n) => /^(sss|senior)/i.test(n) },
+  { label: "Vocational / Other", sub: "Skills & extra-curricular", color: "#b9540f", bg: "#fbeee3", match: () => true },
+];
+function ClassesOverviewCard({ classList, onAll }: { classList: { className: string; count: number }[]; onAll: () => void }) {
+  const counts = SECTION_META.map(() => 0);
+  for (const c of classList) { const idx = SECTION_META.findIndex((s) => s.match(c.className)); counts[idx >= 0 ? idx : SECTION_META.length - 1]++; }
+  return (
+    <Card title="Classes overview" action={<button onClick={onAll} className="text-[11px] font-extrabold text-brand-blue hover:underline">View all</button>}>
+      <ul className="grid gap-2">{SECTION_META.map((s, i) => (
+        <li key={s.label} className="flex items-center gap-3 rounded-xl border border-border-soft px-3 py-2">
+          <span className="grid size-9 shrink-0 place-items-center rounded-xl" style={{ backgroundColor: s.bg, color: s.color }}>{I(BOOK_ICON)}</span>
+          <div className="min-w-0 flex-1"><div className="truncate text-[12px] font-bold text-ink">{s.label}</div><div className="text-[10px] text-ink-soft">{s.sub}</div></div>
+          <span className="rounded-full px-2 py-0.5 text-[11px] font-extrabold" style={{ backgroundColor: s.bg, color: s.color }}>{counts[i]}</span>
+        </li>
+      ))}</ul>
+    </Card>
+  );
+}
+
+function Overview({ userName, school, students, staff, audit, overview, goto, onNotif, onSchoolChange }: { userName: string; school: School; students: Student[]; staff: Staff[]; audit: Audit[]; overview: AdminOverview; notifOpen: boolean; setNotifOpen: (v: boolean) => void; goto: (s: string, studentId?: string) => void; onNotif: (a: Audit) => void; onSchoolChange: (patch: Partial<School>) => void }) {
   const totalStudents = students.length;
   const teachers = staff.filter((s) => s.teacherType.includes("teacher") || s.role === "teacher").length || staff.length;
   const { jss, sss, primary, other } = overview.sections;
-  const stats = [
-    ["Total students", totalStudents.toLocaleString(), totalStudents ? "Enrolled" : "Add your first student", "#178a4c", "#e7f6ee", ICONS.students, "students"],
-    ["Teaching staff", String(staff.length), `${teachers} teaching`, "#6b2fb3", "#f0e9fa", ICONS.staff, "staff"],
-    ["Fees collected", compactN(overview.collected), "Approved payments", "#178a4c", "#e7f6ee", ICONS.finance, "finance"],
-    ["Outstanding", compactN(overview.outstanding), "Across all invoices", "#b9540f", "#fbeee3", ICONS.finance, "finance"],
-  ] as const;
+  const expected = overview.collected + overview.outstanding;
+  const rate = expected ? Math.round((overview.collected / expected) * 100) : 0;
   const hasSeries = overview.series.some((p) => p.value > 0);
+  const stats: StatCardProps[] = [
+    { label: "Total students", value: totalStudents.toLocaleString(), icon: ICONS.students, color: "#178a4c", meta: totalStudents ? "Enrolled this session" : "Add your first student", onClick: () => goto("students") },
+    { label: "Teaching staff", value: String(staff.length), icon: ICONS.staff, color: "#6b2fb3", meta: `${teachers} teaching`, onClick: () => goto("staff") },
+    { label: "Fees collected", value: compactN(overview.collected), icon: ICONS.finance, color: "#c2710c", meta: "This term", trend: feeTrendOf(overview.series), onClick: () => goto("finance") },
+    { label: "Outstanding", value: compactN(overview.outstanding), icon: ICONS.reports, color: "#d4351c", meta: "Across all invoices", onClick: () => goto("finance") },
+  ];
   const segments = [
-    { label: "Primary", value: primary, color: "#b9540f" },
+    { label: "Primary", value: primary, color: "#178a4c" },
     { label: "JSS", value: jss, color: "#2159e8" },
-    { label: "SSS", value: sss, color: "#178a4c" },
-    ...(other ? [{ label: "Other", value: other, color: "#6b2fb3" }] : []),
+    { label: "SSS", value: sss, color: "#6b2fb3" },
+    ...(other ? [{ label: "Other", value: other, color: "#b9540f" }] : []),
   ].filter((s) => s.value > 0);
   return (
     <>
-      <Head title={`Good morning, ${userName.split(" ")[0]} 👋`} subtitle={`${school.currentTerm} · ${school.currentSession} session · here's what's happening today.`} action={<div className="flex items-center gap-2.5"><div className="hidden sm:block"><NotifBell open={notifOpen} setOpen={setNotifOpen} audit={audit} onViewAll={() => goto("audit")} onNavigate={onNotif} /></div><button onClick={() => goto("settings")} title="Change session / term in Settings" className="inline-flex items-center gap-1.5 rounded-[9px] border border-border-soft bg-white px-3 py-1.5 text-[12px] font-bold text-ink-soft transition hover:border-brand-blue hover:text-brand-blue">{school.currentSession} · {school.currentTerm}{I(<path d="m6 9 6 6 6-6" />)}</button></div>} />
+      <WelcomeBanner userName={userName} school={school} onSchoolChange={onSchoolChange} />
 
       {/* Mobile: calendar sits under the greeting, before the stat cards. On desktop it lives in the right rail. */}
       <div className="mb-[18px] xl:hidden"><CalendarCard canManage /></div>
 
-      <div className="grid gap-[18px] xl:grid-cols-[1fr_300px]">
+      <div className="grid gap-[18px] xl:grid-cols-[1fr_320px]">
         {/* Main column */}
         <div className="min-w-0">
-          <div className="grid gap-3.5 grid-cols-2 lg:grid-cols-4">
-            {stats.map(([label, value, meta, color, bg, icon, target]) => (
-              <button key={label} onClick={() => goto(target)} className="rounded-2xl border border-border-soft bg-white p-[16px] text-left transition hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(16,33,63,.08)]">
-                <span className="grid size-9 place-items-center rounded-full" style={{ backgroundColor: bg, color }}>{I(icon)}</span>
-                <strong className="mt-2.5 block break-words font-display text-[clamp(18px,4.5vw,24px)] font-semibold leading-none">{value}</strong>
-                <small className="mt-1.5 block font-bold text-ink-soft">{label}</small>
-                <span className="mt-1 inline-block text-[10px] font-extrabold text-ink-soft">{meta}</span>
-              </button>
-            ))}
+          <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
+            {stats.map((s) => <StatCard key={s.label} {...s} />)}
           </div>
 
           <div className="mt-[18px] grid gap-[18px] lg:grid-cols-[1.4fr_1fr]">
-            <Card title="Fee collection (last 6 months)">
-              {hasSeries ? <BarChart yMax={Math.max(...overview.series.map((p) => p.value)) * 1.2 || 1000} yLabel={(n) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(0)}M` : `${Math.round(n / 1000)}k`)} data={overview.series} />
-                : <Empty text="No approved payments yet. Collections chart here as payments are approved." />}
+            <Card title="Fee collection overview" action={<span className="rounded-lg border border-border-soft px-2.5 py-1 text-[11px] font-bold text-ink-soft">This academic year</span>}>
+              {hasSeries ? <>
+                <BarChart yMax={Math.max(...overview.series.map((p) => p.value)) * 1.2 || 1000} yLabel={(n) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(0)}M` : `${Math.round(n / 1000)}k`)} data={overview.series} />
+                <div className="mt-4 grid grid-cols-3 gap-2 border-t border-border-soft pt-3.5 text-center">
+                  <div><div className="text-[10px] font-bold uppercase tracking-wide text-ink-soft">Total collected</div><div className="mt-0.5 font-display text-[15px] font-bold text-brand-green">{naira(overview.collected)}</div></div>
+                  <div><div className="text-[10px] font-bold uppercase tracking-wide text-ink-soft">Collection rate</div><div className="mt-0.5 font-display text-[15px] font-bold text-brand-blue">{rate}%</div></div>
+                  <div><div className="text-[10px] font-bold uppercase tracking-wide text-ink-soft">Total expected</div><div className="mt-0.5 font-display text-[15px] font-bold text-ink">{naira(expected)}</div></div>
+                </div>
+              </> : <Empty text="No approved payments yet. Collections chart here as payments are approved." />}
             </Card>
-            <Card title="Students by section" action={<button onClick={() => goto("students")} className="text-[11px] font-extrabold text-brand-blue hover:underline">View</button>}>
+            <Card title="Students by section" action={<button onClick={() => goto("students")} className="text-[11px] font-extrabold text-brand-blue hover:underline">View all</button>}>
               {segments.length ? <DonutChart total={totalStudents} segments={segments} /> : <Empty text="Assign classes to students to see the breakdown." />}
             </Card>
           </div>
 
           <div className="mt-[18px]">
             <Card title="Recent activity" action={<button onClick={() => goto("audit")} className="text-[11px] font-extrabold text-brand-blue hover:underline">View all</button>}>
-              {audit.length === 0 ? <Empty text="No activity yet. Actions in your school will appear here." /> : audit.slice(0, 6).map((a, i) => <button key={i} onClick={() => onNotif(a)} className="flex w-full gap-2.5 border-b border-border-soft py-2.5 text-left last:border-0 hover:bg-paper/50"><span className="grid size-7 shrink-0 place-items-center rounded-lg bg-brand-soft text-[11px] font-bold text-brand-blue">●</span><div className="min-w-0 flex-1"><strong className="block text-[11px]">{a.detail || actLabel(a.action)}</strong><span className="text-[10px] text-ink-soft">{actLabel(a.action)} · by {a.actor ?? "system"} · {relTime(a.ts)}</span></div><span className="shrink-0 self-center text-[11px] font-extrabold text-brand-blue">↗</span></button>)}
+              {audit.length === 0 ? <Empty text="No activity yet. Actions in your school will appear here." /> : <div className="grid gap-x-5 sm:grid-cols-2">{audit.slice(0, 8).map((a, i) => <ActivityRow key={i} a={a} onClick={() => onNotif(a)} />)}</div>}
             </Card>
           </div>
         </div>
 
-        {/* Right rail (calendar hidden on mobile — it's shown under the greeting instead) */}
+        {/* Right rail (calendar hidden on mobile - it's shown under the greeting instead) */}
         <div className="grid content-start gap-[18px]">
           <div className="hidden xl:block"><CalendarCard canManage /></div>
-          <Card title="Classes" action={<button onClick={() => goto("students")} className="text-[11px] font-extrabold text-brand-blue hover:underline">All</button>}>
-            {overview.classList.length === 0 ? <p className="text-[12px] text-ink-soft">No classes yet. Add students with a class.</p> : <ul className="grid gap-1.5">{overview.classList.slice(0, 6).map((c) => <li key={c.className} className="flex items-center justify-between rounded-xl border border-border-soft px-3 py-2 text-[12px]"><span className="font-bold text-ink">{c.className}</span><span className="rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-extrabold text-brand-blue">{c.count}</span></li>)}</ul>}
-          </Card>
+          <ClassesOverviewCard classList={overview.classList} onAll={() => goto("students")} />
           <Card title="Top performers" action={<button onClick={() => goto("students")} className="text-[11px] font-extrabold text-brand-blue hover:underline">All</button>}>
-            {overview.topPerformers.length === 0 ? <p className="text-[12px] text-ink-soft">Record results to see top performers.</p> : <ol className="grid gap-1.5">{overview.topPerformers.map((p, i) => <li key={i} className="flex items-center gap-2.5 text-[12px]"><span className={`grid size-6 shrink-0 place-items-center rounded-full text-[10px] font-extrabold ${i === 0 ? "bg-[#f4b740] text-white" : "bg-brand-soft text-brand-blue"}`}>{i + 1}</span><div className="min-w-0 flex-1"><div className="truncate font-bold text-ink">{p.name}</div><div className="text-[10px] text-ink-soft">{p.className ?? "—"}</div></div><span className="font-extrabold text-brand-green">{p.average}%</span></li>)}</ol>}
+            {overview.topPerformers.length === 0 ? <p className="text-[12px] text-ink-soft">Record results to see top performers.</p> : <ol className="grid gap-1.5">{overview.topPerformers.map((p, i) => <li key={i} className="flex items-center gap-2.5 text-[12px]"><span className={`grid size-6 shrink-0 place-items-center rounded-full text-[10px] font-extrabold ${i === 0 ? "bg-[#f4b740] text-white" : "bg-brand-soft text-brand-blue"}`}>{i + 1}</span><div className="min-w-0 flex-1"><div className="truncate font-bold text-ink">{p.name}</div><div className="text-[10px] text-ink-soft">{p.className ?? "-"}</div></div><span className="font-extrabold text-brand-green">{p.average}%</span></li>)}</ol>}
           </Card>
         </div>
       </div>
@@ -253,11 +502,11 @@ function Students({ students, openStudentId, onConsumed }: { students: Student[]
   const router = useRouter();
   // Deep-link from a notification (e.g. "result saved for …") opens that student's profile.
   useEffect(() => { if (openStudentId) { setSelected(openStudentId); onConsumed?.(); } }, [openStudentId]); // eslint-disable-line react-hooks/exhaustive-deps
-  const clsOf = (r: Student) => r.className || (r.createdAt.includes("·") ? r.createdAt.split("·")[0].trim() : "—");
+  const clsOf = (r: Student) => r.className || (r.createdAt.includes("·") ? r.createdAt.split("·")[0].trim() : "-");
   const [classF, setClassF] = useState("all");
   const [page, setPage] = useState(1);
   const per = 10;
-  const classOpts = ["all", ...Array.from(new Set(students.map(clsOf))).filter((c) => c !== "—")];
+  const classOpts = ["all", ...Array.from(new Set(students.map(clsOf))).filter((c) => c !== "-")];
   const filtered = useMemo(() => students.filter((r) => `${r.name} ${r.admissionNo}`.toLowerCase().includes(q.toLowerCase()) && (classF === "all" || clsOf(r) === classF)), [students, q, classF]); // eslint-disable-line react-hooks/exhaustive-deps
   const pages = Math.max(1, Math.ceil(filtered.length / per));
   const cur = Math.min(page, pages);
@@ -265,7 +514,7 @@ function Students({ students, openStudentId, onConsumed }: { students: Student[]
   if (selected) return <StudentProfilePage studentId={selected} onBack={() => setSelected(null)} onChanged={() => router.refresh()} />;
   return (
     <>
-      <Head title="Students" subtitle={`${students.length.toLocaleString()} student${students.length === 1 ? "" : "s"} enrolled`} action={<div className="flex flex-wrap gap-2"><button onClick={() => { setShowClasses((s) => !s); setShowAdd(false); setShowLogins(false); }} className="inline-flex min-h-9 items-center gap-1.5 rounded-[10px] border border-border-soft bg-white px-3.5 text-[13px] font-extrabold text-ink-soft transition hover:border-brand-blue hover:text-brand-blue">🏫 {showClasses ? "Close" : "Classes"}</button><button onClick={() => { setShowLogins((s) => !s); setShowAdd(false); setShowClasses(false); }} className="inline-flex min-h-9 items-center gap-1.5 rounded-[10px] border border-border-soft bg-white px-3.5 text-[13px] font-extrabold text-ink-soft transition hover:border-brand-blue hover:text-brand-blue">🔑 {showLogins ? "Close" : "Logins"}</button><PrimaryBtn onClick={() => { setShowAdd((s) => !s); setShowLogins(false); setShowClasses(false); }}>{showAdd ? I(<><path d="M18 6 6 18M6 6l12 12" /></>) : I(<><path d="M12 5v14M5 12h14" /></>)}{showAdd ? "Close" : "Add student"}</PrimaryBtn></div>} />
+      <Head title="Classes" subtitle={`${students.length.toLocaleString()} student${students.length === 1 ? "" : "s"} enrolled`} action={<div className="flex flex-wrap gap-2"><button onClick={() => { setShowClasses((s) => !s); setShowAdd(false); setShowLogins(false); }} className="inline-flex min-h-9 items-center gap-1.5 rounded-[10px] border border-border-soft bg-white px-3.5 text-[13px] font-extrabold text-ink-soft transition hover:border-brand-blue hover:text-brand-blue">🏫 {showClasses ? "Close" : "Manage classes"}</button><button onClick={() => { setShowLogins((s) => !s); setShowAdd(false); setShowClasses(false); }} className="inline-flex min-h-9 items-center gap-1.5 rounded-[10px] border border-border-soft bg-white px-3.5 text-[13px] font-extrabold text-ink-soft transition hover:border-brand-blue hover:text-brand-blue">🔑 {showLogins ? "Close" : "Logins"}</button><PrimaryBtn onClick={() => { setShowAdd((s) => !s); setShowLogins(false); setShowClasses(false); }}>{showAdd ? I(<><path d="M18 6 6 18M6 6l12 12" /></>) : I(<><path d="M12 5v14M5 12h14" /></>)}{showAdd ? "Close" : "Add student"}</PrimaryBtn></div>} />
       {showClasses && <div className="mb-[18px]"><ClassManager /></div>}
       {showAdd && <div className="mb-[18px]"><Card title="Add a student"><div className="grid gap-[18px] sm:grid-cols-2"><AddStudentForm /><div className="border-t border-border-soft pt-4 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0"><p className="mb-3 text-[12px] font-extrabold text-ink">Reset a student&rsquo;s password</p><ResetStudentPasswordForm /></div></div></Card></div>}
       {showLogins && <div className="mb-[18px]"><Card title="Student logins"><StudentCredentials students={students} /></Card></div>}
@@ -357,8 +606,8 @@ function StaffView({ staff }: { staff: Staff[] }) {
             <td className="py-2.5"><div className="flex items-center gap-2.5"><Avatar name={s.name} size={30} /><div><div className="font-bold text-ink">{s.name}</div><div className="text-[10px] text-ink-soft">{s.email}</div></div></div></td>
             <td className="py-2.5"><span className="rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-extrabold text-brand-blue">{ROLE_LABEL[s.role] ?? s.role}</span></td>
             <td className="py-2.5 text-ink-soft">{s.teacherType}</td>
-            <td className="py-2.5">{s.subjects.length ? <div className="flex flex-wrap gap-1">{s.subjects.slice(0, 2).map((x) => <span key={x} className="rounded bg-paper px-1.5 py-0.5 text-[10px] font-bold text-ink-soft">{x}</span>)}{s.subjects.length > 2 && <span className="text-[10px] text-ink-soft">+{s.subjects.length - 2}</span>}</div> : <span className="text-ink-soft">—</span>}</td>
-            <td className="py-2.5 text-ink-soft">{s.assignedClass ?? "—"}</td>
+            <td className="py-2.5">{s.subjects.length ? <div className="flex flex-wrap gap-1">{s.subjects.slice(0, 2).map((x) => <span key={x} className="rounded bg-paper px-1.5 py-0.5 text-[10px] font-bold text-ink-soft">{x}</span>)}{s.subjects.length > 2 && <span className="text-[10px] text-ink-soft">+{s.subjects.length - 2}</span>}</div> : <span className="text-ink-soft">-</span>}</td>
+            <td className="py-2.5 text-ink-soft">{s.assignedClass ?? "-"}</td>
             <td className="py-2.5"><StaffStatusBadge status={s.status} /></td>
             <td className="py-2.5 text-right text-ink-soft">›</td>
           </tr>)}</tbody>
@@ -369,11 +618,11 @@ function StaffView({ staff }: { staff: Staff[] }) {
       {selected && <div className="fixed inset-0 z-50"><div className="absolute inset-0 bg-black/40" onClick={() => setSelected(null)} /><aside className="absolute right-0 top-0 h-full w-[min(440px,100%)] overflow-y-auto bg-white p-6 shadow-[0_0_60px_rgba(16,33,63,.2)] motion-safe:animate-[fade-up_.2s_ease]">
         <div className="mb-5 flex items-center justify-between"><h2 className="font-display text-[20px] font-semibold">Staff details</h2><button onClick={() => setSelected(null)} className="grid size-8 place-items-center rounded-lg text-ink-soft hover:bg-paper">✕</button></div>
         <div className="flex items-center gap-3.5"><Avatar name={selected.name} size={56} /><div><div className="font-display text-[17px] font-semibold">{selected.name}</div><div className="text-[12px] text-ink-soft">{selected.email}</div><div className="mt-0.5"><StaffStatusBadge status={selected.status} /></div></div></div>
-        <dl className="mt-5 grid gap-0">{[["Staff ID", selected.staffNo ?? "—"], ["Role", ROLE_LABEL[selected.role] ?? selected.role], ["Type", selected.teacherType], ["Assigned class", selected.assignedClass ?? "—"], ["Subjects", selected.subjects.join(", ") || "—"], ["Approve payments", selected.canApprove ? "Yes" : "No"]].map(([k, v]) => <div key={k} className="flex justify-between gap-4 border-b border-border-soft py-2.5 last:border-0"><dt className="text-[12px] font-bold text-ink-soft">{k}</dt><dd className="max-w-[60%] text-right text-[12px] font-bold text-ink">{k === "Staff ID" && v !== "—" ? <code className="select-all text-brand-blue">{v}</code> : v}</dd></div>)}</dl>
+        <dl className="mt-5 grid gap-0">{[["Staff ID", selected.staffNo ?? "-"], ["Role", ROLE_LABEL[selected.role] ?? selected.role], ["Type", selected.teacherType], ["Assigned class", selected.assignedClass ?? "-"], ["Subjects", selected.subjects.join(", ") || "-"], ["Approve payments", selected.canApprove ? "Yes" : "No"]].map(([k, v]) => <div key={k} className="flex justify-between gap-4 border-b border-border-soft py-2.5 last:border-0"><dt className="text-[12px] font-bold text-ink-soft">{k}</dt><dd className="max-w-[60%] text-right text-[12px] font-bold text-ink">{k === "Staff ID" && v !== "-" ? <code className="select-all text-brand-blue">{v}</code> : v}</dd></div>)}</dl>
         {selected.role !== "school_admin" && <StaffActions staff={selected} onDone={() => { setSelected(null); router.refresh(); }} onErr={setStaffErr} />}
         {staffErr && <p className="mt-2 text-[12px] font-bold text-[#b3261e]">{staffErr}</p>}
         <h3 className="mb-2 mt-6 font-display text-[15px] font-semibold">Permissions</h3>
-        <div className="overflow-x-auto"><table className="w-full text-left text-[11px]"><thead><tr className="text-[9px] uppercase tracking-wide text-ink-soft"><th className="py-1.5">Area</th>{LEVELS.map((l) => <th key={l.key} className="py-1.5 text-center font-bold">{l.label}</th>)}</tr></thead><tbody>{AREAS.map((a) => { const lvl = (selected.permissions[a] ?? "none") as Level; return <tr key={a} className="border-t border-border-soft"><td className="py-2 font-bold text-ink">{AREA_LABELS[a]}</td>{LEVELS.map((l) => <td key={l.key} className="py-2 text-center">{lvl !== "none" && rank[lvl] >= rank[l.key] ? <span className="text-brand-green">✓</span> : <span className="text-[#cdd7e6]">—</span>}</td>)}</tr>; })}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="w-full text-left text-[11px]"><thead><tr className="text-[9px] uppercase tracking-wide text-ink-soft"><th className="py-1.5">Area</th>{LEVELS.map((l) => <th key={l.key} className="py-1.5 text-center font-bold">{l.label}</th>)}</tr></thead><tbody>{AREAS.map((a) => { const lvl = (selected.permissions[a] ?? "none") as Level; return <tr key={a} className="border-t border-border-soft"><td className="py-2 font-bold text-ink">{AREA_LABELS[a]}</td>{LEVELS.map((l) => <td key={l.key} className="py-2 text-center">{lvl !== "none" && rank[lvl] >= rank[l.key] ? <span className="text-brand-green">✓</span> : <span className="text-[#cdd7e6]">-</span>}</td>)}</tr>; })}</tbody></table></div>
         <p className="mt-4 rounded-lg bg-brand-soft/60 p-2.5 text-[10px] leading-relaxed text-ink-soft">Permissions are suggested from the role and responsibilities, then adjusted if needed.</p>
       </aside></div>}
     </>

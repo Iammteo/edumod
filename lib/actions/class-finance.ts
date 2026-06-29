@@ -73,7 +73,7 @@ export type ClassDetail = {
 };
 
 export type OutstandingStudent = { className: string; student: string; guardian: string; phone: string; paid: number; outstanding: number; status: string };
-// Every student in the school with an unpaid balance, with parent contact — for exported reports.
+// Every student in the school with an unpaid balance, with parent contact - for exported reports.
 export async function getOutstandingStudents(): Promise<OutstandingStudent[] | { error: string }> {
   const c = await ctx();
   if (!c?.canView) return { error: "Not authorised." };

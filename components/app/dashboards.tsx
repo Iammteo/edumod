@@ -48,8 +48,8 @@ function FeeRows({ items }: { items: StudentFee[] }) {
 type StaffProps = SchoolProps & { term: string; image: string | null; subjects: string[]; assignedClass: string | null; isClassTeacher: boolean; canAddStudents: boolean; classStudents: { id: string; name: string; admissionNo: string }[] };
 export function StaffDashboard({ userName, schoolName, schoolCode, term, image, subjects, assignedClass, isClassTeacher, canAddStudents, classStudents }: StaffProps) {
   const stats: Trio[] = [
-    ["My class", assignedClass ?? "—", isClassTeacher ? "Class teacher" : "Subject teacher"],
-    ["Students in my class", assignedClass ? String(classStudents.length) : "—", assignedClass ? "On the register" : "No class assigned"],
+    ["My class", assignedClass ?? "-", isClassTeacher ? "Class teacher" : "Subject teacher"],
+    ["Students in my class", assignedClass ? String(classStudents.length) : "-", assignedClass ? "On the register" : "No class assigned"],
     ["My subjects", String(subjects.length), subjects.slice(0, 2).join(", ") || "None assigned yet"],
   ];
   const nav = ["Overview", "Attendance", "My class", ...(isClassTeacher ? ["Results"] : []), "My profile", ...(canAddStudents ? ["Students"] : [])];
@@ -61,7 +61,7 @@ export function StaffDashboard({ userName, schoolName, schoolCode, term, image, 
         <Panel id="attendance" title="My attendance"><MyAttendanceCard /></Panel>
         <Panel id="my-profile" title="My profile">
           <StaffPhotoCard name={userName} image={image} />
-          <dl className="mt-4 grid gap-0">{[["Role", isClassTeacher ? "Class teacher" : "Teacher"], ["Assigned class", assignedClass ?? "—"], ["Subjects", subjects.join(", ") || "—"]].map(([k, v]) => <div key={k} className="flex justify-between gap-4 border-b border-border-soft py-2.5 last:border-0"><dt className="text-[12px] font-bold text-ink-soft">{k}</dt><dd className="max-w-[60%] text-right text-[12px] font-bold text-ink">{v}</dd></div>)}</dl>
+          <dl className="mt-4 grid gap-0">{[["Role", isClassTeacher ? "Class teacher" : "Teacher"], ["Assigned class", assignedClass ?? "-"], ["Subjects", subjects.join(", ") || "-"]].map(([k, v]) => <div key={k} className="flex justify-between gap-4 border-b border-border-soft py-2.5 last:border-0"><dt className="text-[12px] font-bold text-ink-soft">{k}</dt><dd className="max-w-[60%] text-right text-[12px] font-bold text-ink">{v}</dd></div>)}</dl>
         </Panel>
       </div>
 
@@ -72,7 +72,7 @@ export function StaffDashboard({ userName, schoolName, schoolCode, term, image, 
       )}
 
       <div id="my-class" className="mt-[18px] grid scroll-mt-6 gap-[18px] xl:grid-cols-[1fr_1fr]">
-        <Panel title={assignedClass ? `My class — ${assignedClass}` : "My class"}>
+        <Panel title={assignedClass ? `My class - ${assignedClass}` : "My class"}>
           {!assignedClass ? <Empty text="You haven't been assigned a class yet. Ask your admin to assign one." />
             : classStudents.length === 0 ? <Empty text={`No students are in ${assignedClass} yet.`} />
             : <div className="grid gap-1.5">{classStudents.map((s) => (
@@ -99,9 +99,9 @@ type StudentProps = SchoolProps & { term: string; overview: StudentOverview };
 export function StudentDashboard({ userName, schoolName, schoolCode, term, overview }: StudentProps) {
   const fees = overview?.fees ?? [];
   const stats: Trio[] = [
-    ["Outstanding fees", overview ? naira(overview.outstanding) : "—", overview && overview.outstanding > 0 ? "Action needed" : "All clear ✓"],
-    ["Total paid", overview ? naira(overview.paid) : "—", "Approved payments"],
-    ["My class", overview?.className ?? "—", overview?.admissionNo ?? ""],
+    ["Outstanding fees", overview ? naira(overview.outstanding) : "-", overview && overview.outstanding > 0 ? "Action needed" : "All clear ✓"],
+    ["Total paid", overview ? naira(overview.paid) : "-", "Approved payments"],
+    ["My class", overview?.className ?? "-", overview?.admissionNo ?? ""],
     ["Invoices", String(fees.length), fees.length ? "See below" : "None yet"],
   ];
   const results = overview?.results ?? [];

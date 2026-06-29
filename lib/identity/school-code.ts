@@ -21,5 +21,5 @@ export async function pickSchoolCode(
     const code = generateSchoolCode(length);
     if (!(await isTaken(code))) return code;
   }
-  throw new Error(`Could not allocate a unique ${length}-digit school code after ${maxAttempts} attempts — the code space may be exhausted.`);
+  throw new Error(`Could not allocate a unique ${length}-digit school code after ${maxAttempts} attempts - the code space may be exhausted.`);
 }
