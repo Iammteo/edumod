@@ -1,7 +1,7 @@
 import Redis from "ioredis";
 
 // Per-account + per-IP login lockout. Student IDs are enumerable (school code + sequential ID),
-// so the password is the only secret — this caps brute-force attempts. Backed by Redis; if Redis
+// so the password is the only secret - this caps brute-force attempts. Backed by Redis; if Redis
 // is unavailable it fails OPEN (never blocks a legitimate login) and just logs.
 const MAX_ATTEMPTS = 5; // failures allowed within the window
 const WINDOW_SECONDS = 15 * 60; // 15-minute rolling lockout

@@ -6,18 +6,14 @@ import { exportReport } from "@/lib/export-report";
 
 const METHOD_LABEL: Record<string, string> = { qr_scan: "QR scan", kiosk_pin: "Kiosk PIN", admin_override: "Override", self_portal: "Portal" };
 const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
-function weekRange(dateStr: string): [string, string] {
-  const d = new Date(dateStr + "T00:00"); const dow = (d.getDay() + 6) % 7;
-  const mon = new Date(d.getTime() - dow * 864e5); const sun = new Date(mon.getTime() + 6 * 864e5);
-  const iso = (x: Date) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
-  return [iso(mon), iso(sun)];
-}
+const monthStartIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; };
 
 export function StaffClockInView() {
   const [data, setData] = useState<AttendanceData | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [showPin, setShowPin] = useState(false);
-  const [repDate, setRepDate] = useState(todayIso());
+  const [from, setFrom] = useState(monthStartIso());
+  const [to, setTo] = useState(todayIso());
   const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => {
@@ -26,8 +22,8 @@ export function StaffClockInView() {
   }, []);
   useEffect(() => { load(); const t = setInterval(load, 8000); return () => clearInterval(t); }, [load]);
 
-  async function runExport(format: "pdf" | "excel" | "csv", period: "day" | "week") {
-    const [from, to] = period === "week" ? weekRange(repDate) : [repDate, repDate];
+  async function runExport(format: "pdf" | "excel" | "csv") {
+    if (from > to) { setErr("The “From” date must be on or before the “To” date."); return; }
     setExporting(true); setErr(null);
     const r = await getTeacherAttendanceReport(from, to);
     setExporting(false);
@@ -39,7 +35,21 @@ export function StaffClockInView() {
       { key: "name", label: "Name" }, { key: "role", label: "Role" }, { key: "timeIn", label: "Time in" }, { key: "timeOut", label: "Time out" }, { key: "status", label: "Status" }, { key: "method", label: "Method" },
       ...(format === "pdf" ? [{ key: "snapshot", label: "Photo", image: true }] : []),
     ];
-    exportReport(format, { title: "Staff clock-in register", subtitle: multiDay ? `${from} → ${to}` : from, columns, rows, filename: `staff-attendance-${from}${multiDay ? `_${to}` : ""}` });
+    // Per-staff tally across the range: on-time, late, left-early and absent counts.
+    const agg = new Map<string, { name: string; role: string; onTime: number; late: number; leftEarly: number; absent: number }>();
+    for (const row of r) {
+      const k = `${row.name}|${row.role}`;
+      const s = agg.get(k) ?? { name: row.name, role: row.role, onTime: 0, late: 0, leftEarly: 0, absent: 0 };
+      if (row.status === "Absent") s.absent++;
+      else { if (row.status.startsWith("Late")) s.late++; else s.onTime++; if (row.status.includes("left early")) s.leftEarly++; }
+      agg.set(k, s);
+    }
+    const summary = {
+      title: `Summary per staff (${from} → ${to})`,
+      columns: [{ key: "name", label: "Name" }, { key: "role", label: "Role" }, { key: "onTime", label: "On time" }, { key: "late", label: "Late" }, { key: "leftEarly", label: "Left early" }, { key: "absent", label: "Absent" }],
+      rows: [...agg.values()].sort((a, b) => a.name.localeCompare(b.name)),
+    };
+    exportReport(format, { title: "Staff clock-in register", subtitle: multiDay ? `${from} → ${to}` : from, columns, rows, filename: `staff-attendance-${from}${multiDay ? `_${to}` : ""}`, summary });
   }
 
   if (!data) return <div className="grid place-items-center py-20 text-[13px] text-ink-soft">{err ?? "Loading attendance…"}</div>;
@@ -52,14 +62,16 @@ export function StaffClockInView() {
         <div className="flex flex-wrap items-center gap-2">
           <details className="relative">
             <summary className="inline-flex min-h-10 cursor-pointer list-none items-center gap-1.5 rounded-[12px] border border-border-soft bg-white px-4 text-[13px] font-extrabold text-ink transition hover:border-brand-blue hover:text-brand-blue">{exporting ? "Preparing…" : "⤓ Download register"}</summary>
-            <div className="absolute right-0 z-20 mt-1.5 w-60 rounded-xl border border-border-soft bg-white p-2 shadow-lg">
-              <label className="mb-1.5 grid gap-1"><span className="px-1 text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">Date</span><input type="date" value={repDate} max={todayIso()} onChange={(e) => setRepDate(e.target.value)} className="min-h-9 rounded-[9px] border border-border-soft bg-paper/60 px-2.5 text-[12px] outline-none focus:border-brand-blue" /></label>
-              <p className="px-1 py-1 text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">This day</p>
-              <button onClick={() => runExport("pdf", "day")} className="block w-full rounded-lg px-2 py-1.5 text-left text-[12px] font-bold hover:bg-paper">PDF (with photos)</button>
-              <button onClick={() => runExport("excel", "day")} className="block w-full rounded-lg px-2 py-1.5 text-left text-[12px] font-bold hover:bg-paper">Excel</button>
-              <p className="mt-1 border-t border-border-soft px-1 pt-1.5 pb-1 text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">This week (Mon–Sun)</p>
-              <button onClick={() => runExport("pdf", "week")} className="block w-full rounded-lg px-2 py-1.5 text-left text-[12px] font-bold hover:bg-paper">PDF (with photos)</button>
-              <button onClick={() => runExport("excel", "week")} className="block w-full rounded-lg px-2 py-1.5 text-left text-[12px] font-bold hover:bg-paper">Excel</button>
+            <div className="absolute right-0 z-20 mt-1.5 w-64 rounded-xl border border-border-soft bg-white p-2 shadow-lg">
+              <div className="mb-1.5 grid grid-cols-2 gap-2">
+                <label className="grid gap-1"><span className="px-0.5 text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">From</span><input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} className="min-h-9 rounded-[9px] border border-border-soft bg-paper/60 px-2 text-[12px] outline-none focus:border-brand-blue" /></label>
+                <label className="grid gap-1"><span className="px-0.5 text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">To</span><input type="date" value={to} min={from} max={todayIso()} onChange={(e) => setTo(e.target.value)} className="min-h-9 rounded-[9px] border border-border-soft bg-paper/60 px-2 text-[12px] outline-none focus:border-brand-blue" /></label>
+              </div>
+              <p className="px-1 py-1 text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">Export range</p>
+              <button onClick={() => runExport("pdf")} className="block w-full rounded-lg px-2 py-1.5 text-left text-[12px] font-bold hover:bg-paper">PDF (with photos)</button>
+              <button onClick={() => runExport("excel")} className="block w-full rounded-lg px-2 py-1.5 text-left text-[12px] font-bold hover:bg-paper">Excel</button>
+              <button onClick={() => runExport("csv")} className="block w-full rounded-lg px-2 py-1.5 text-left text-[12px] font-bold hover:bg-paper">CSV</button>
+              <p className="mt-1 border-t border-border-soft px-1 pt-1.5 text-[10px] leading-relaxed text-ink-soft">The PDF ends with a per-staff summary: times on-time, late, left-early and absent.</p>
             </div>
           </details>
           <button onClick={() => setShowPin((v) => !v)} className="inline-flex min-h-10 items-center gap-1.5 rounded-[12px] border border-border-soft bg-white px-4 text-[13px] font-extrabold text-ink transition hover:border-brand-blue hover:text-brand-blue">🔑 {data.myPinSet ? "Change my PIN" : "Set my PIN"}</button>
@@ -87,7 +99,7 @@ export function StaffClockInView() {
                 <td className="py-2.5"><span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${l.direction === "clock_in" ? "bg-brand-green/10 text-brand-green" : "bg-[#fdf6e9] text-[#b9540f]"}`}>{l.direction === "clock_in" ? "Clocked in" : "Clocked out"}</span></td>
                 <td className="py-2.5 text-ink-soft">{l.time}</td>
                 <td className="hidden py-2.5 text-ink-soft sm:table-cell">{METHOD_LABEL[l.method] ?? l.method}</td>
-                <td className="py-2.5 text-right">{l.snapshotUrl ? <a href={l.snapshotUrl} target="_blank" rel="noreferrer" className="font-extrabold text-brand-blue hover:underline">📷 View</a> : l.method === "kiosk_pin" ? <span className="text-ink-soft/60">uploading…</span> : <span className="text-ink-soft/50">—</span>}</td>
+                <td className="py-2.5 text-right">{l.snapshotUrl ? <a href={l.snapshotUrl} target="_blank" rel="noreferrer" className="font-extrabold text-brand-blue hover:underline">📷 View</a> : l.method === "kiosk_pin" ? <span className="text-ink-soft/60">uploading…</span> : <span className="text-ink-soft/50">-</span>}</td>
               </tr>
             ))}</tbody>
           </table></div>

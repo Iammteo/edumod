@@ -32,19 +32,19 @@ export function StudentProfileEdit({ data, onClose, onSaved }: { data: StudentPr
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-3 sm:p-6" onClick={onClose}>
       <div className="mx-auto w-[min(820px,100%)] rounded-2xl bg-paper shadow-[0_30px_80px_rgba(16,33,63,.3)] motion-safe:animate-[fade-up_.2s_ease]" onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 z-10 flex items-center justify-between rounded-t-2xl border-b border-border-soft bg-white px-5 py-3.5"><h2 className="font-display text-[17px] font-semibold">Edit — {data.name}</h2><button onClick={onClose} className="grid size-8 place-items-center rounded-lg text-ink-soft hover:bg-paper">✕</button></div>
+        <div className="sticky top-0 z-10 flex items-center justify-between rounded-t-2xl border-b border-border-soft bg-white px-5 py-3.5"><h2 className="font-display text-[17px] font-semibold">Edit - {data.name}</h2><button onClick={onClose} className="grid size-8 place-items-center rounded-lg text-ink-soft hover:bg-paper">✕</button></div>
         <div className="grid gap-4 p-5">
           {err && <div className="rounded-[10px] border border-[#f3c2c2] bg-[#fdeeee] px-3 py-2 text-[12px] font-bold text-[#b3261e]">{err}</div>}
           <Box title="Bio data">
             <div className="grid gap-3 sm:grid-cols-2">
-              <F label="Sex"><select value={bio.sex} onChange={(e) => set("sex", e.target.value)} className={inputCls}><option value="">—</option><option>Male</option><option>Female</option></select></F>
+              <F label="Sex"><select value={bio.sex} onChange={(e) => set("sex", e.target.value)} className={inputCls}><option value="">-</option><option>Male</option><option>Female</option></select></F>
               <F label="Date of birth"><input type="date" value={bio.dateOfBirth} onChange={(e) => set("dateOfBirth", e.target.value)} className={inputCls} /></F>
               <F label="Class"><select value={className} onChange={(e) => setClassName(e.target.value)} className={inputCls}><option value="">No class</option>{classNames.map((c) => <option key={c}>{c}</option>)}</select></F>
               <F label="Arm / Section"><input value={bio.arm} onChange={(e) => set("arm", e.target.value)} className={inputCls} placeholder="A / Gold / Diligence" /></F>
               <F label="House"><input value={bio.house} onChange={(e) => set("house", e.target.value)} className={inputCls} placeholder="Emerald / Green" /></F>
               <F label="Religion"><input value={bio.religion} onChange={(e) => set("religion", e.target.value)} className={inputCls} placeholder="Christianity / Islam" /></F>
-              <F label="Genotype"><select value={bio.genotype} onChange={(e) => set("genotype", e.target.value)} className={inputCls}><option value="">—</option>{GENOTYPES.map((g) => <option key={g}>{g}</option>)}</select></F>
-              <F label="Blood group"><select value={bio.bloodGroup} onChange={(e) => set("bloodGroup", e.target.value)} className={inputCls}><option value="">—</option>{BLOOD.map((g) => <option key={g}>{g}</option>)}</select></F>
+              <F label="Genotype"><select value={bio.genotype} onChange={(e) => set("genotype", e.target.value)} className={inputCls}><option value="">-</option>{GENOTYPES.map((g) => <option key={g}>{g}</option>)}</select></F>
+              <F label="Blood group"><select value={bio.bloodGroup} onChange={(e) => set("bloodGroup", e.target.value)} className={inputCls}><option value="">-</option>{BLOOD.map((g) => <option key={g}>{g}</option>)}</select></F>
               <F label="Nationality"><input value={bio.nationality} onChange={(e) => set("nationality", e.target.value)} className={inputCls} placeholder="Nigerian" /></F>
               <F label="State of origin"><input value={bio.stateOfOrigin} onChange={(e) => set("stateOfOrigin", e.target.value)} className={inputCls} placeholder="Imo State" /></F>
               <F label="L.G.A."><input value={bio.lga} onChange={(e) => set("lga", e.target.value)} className={inputCls} placeholder="Owerri North" /></F>
@@ -53,7 +53,7 @@ export function StudentProfileEdit({ data, onClose, onSaved }: { data: StudentPr
           </Box>
           <Box title="Medical & welfare">
             <div className="grid gap-3 sm:grid-cols-2">
-              <F label="Medical conditions (e.g. asthmatic)" full><textarea value={bio.medicalNotes} onChange={(e) => set("medicalNotes", e.target.value)} rows={2} className={`${inputCls} resize-y py-2`} placeholder="e.g. Asthmatic — keep inhaler nearby." /></F>
+              <F label="Medical conditions (e.g. asthmatic)" full><textarea value={bio.medicalNotes} onChange={(e) => set("medicalNotes", e.target.value)} rows={2} className={`${inputCls} resize-y py-2`} placeholder="e.g. Asthmatic - keep inhaler nearby." /></F>
               <F label="Allergies"><input value={bio.allergies} onChange={(e) => set("allergies", e.target.value)} className={inputCls} placeholder="Dust, Pollen, Nuts" /></F>
               <F label="Dietary notes"><input value={bio.dietaryNotes} onChange={(e) => set("dietaryNotes", e.target.value)} className={inputCls} placeholder="No nuts / No peanuts" /></F>
               <F label="Special support" full><input value={bio.specialSupport} onChange={(e) => set("specialSupport", e.target.value)} className={inputCls} placeholder="Needs extra time during exams" /></F>

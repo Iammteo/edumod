@@ -2,7 +2,7 @@
 // prefers-reduced-motion via the global guard in globals.css. Used in empty states and headers
 // to make the app feel friendly and alive.
 
-// A bobbing graduation cap with twinkling stars and floating books — the hero "scene".
+// A bobbing graduation cap with twinkling stars and floating books - the hero "scene".
 export function SchoolScene({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 240 200" className={className} role="img" aria-label="School illustration">

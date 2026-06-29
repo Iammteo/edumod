@@ -29,7 +29,7 @@ export default function KioskPage() {
         </div>
 
         <p className="mt-5 flex items-center justify-center gap-2 text-[15px] font-bold text-blue-50"><QrCode className="size-5" /> Scan with your phone to clock in / out</p>
-        <p className="mt-1 text-[12px] text-blue-200">The code refreshes every 5 seconds — screenshots won&rsquo;t work.</p>
+        <p className="mt-1 text-[12px] text-blue-200">The code refreshes every 5 seconds - screenshots won&rsquo;t work.</p>
 
         <button onClick={() => setModal(true)} className="mt-7 inline-flex items-center gap-2 rounded-2xl border border-white/25 bg-white/10 px-6 py-3 text-[15px] font-extrabold backdrop-blur transition hover:bg-white/20">
           <SmartphoneNfc className="size-5" /> Phone dead? Clock in with PIN
@@ -74,7 +74,7 @@ function PinModal({ onClose }: { onClose: () => void }) {
     if (!teacherId) { setToast({ ok: false, msg: "Select your name." }); return; }
     if (!/^\d{6}$/.test(pin)) { setToast({ ok: false, msg: "Enter your 6-digit PIN." }); return; }
     const snapshot = captureSelfie();
-    if (!snapshot) { setToast({ ok: false, msg: "Camera not ready — allow camera access." }); return; }
+    if (!snapshot) { setToast({ ok: false, msg: "Camera not ready - allow camera access." }); return; }
     setBusy(true); setToast(null);
     const r = await handleKioskPinClockIn({ teacherId, pin, snapshot });
     setBusy(false);

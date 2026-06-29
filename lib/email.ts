@@ -59,7 +59,7 @@ export async function sendSchoolCodeEmail(to: string, schoolName: string, school
       ``,
       `Your school code is: ${schoolCode}`,
       ``,
-      `Share this code with your staff and students — they'll need it to log in.`,
+      `Share this code with your staff and students - they'll need it to log in.`,
       `You can always find it again in your school settings.`,
     ].join("\n"),
   });

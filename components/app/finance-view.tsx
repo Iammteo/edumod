@@ -3,6 +3,163 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getFinanceData, recordPayment, approvePayment, rejectPayment, createFeeStructure, type FinanceData, type Payment, type Student } from "@/lib/actions/finance";
 import { useClassNames } from "@/components/app/use-classes";
+import { ClassFinanceView } from "./class-finance";
+
+const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+export type FinanceSection = "overview" | "record" | "approvals" | "bills" | "invoices" | "classsummary" | "overpayments" | "reports";
+const SECTION_HEAD: Record<FinanceSection, [string, string]> = {
+  overview: ["Finance overview", "Collections, approvals and outstanding at a glance."],
+  record: ["Record payment", "Record a payment towards a student's invoice or fee."],
+  approvals: ["Approvals", "Review and approve payments under maker-checker control."],
+  bills: ["Bills & fee structures", "Create and issue bills to students and classes."],
+  invoices: ["Invoices & receipts", "Create, manage and share invoices with parents and guardians."],
+  classsummary: ["Class finance summary", "Monitor class collections, outstanding balances and payment performance."],
+  overpayments: ["Overpayments & refunds", "Track credit balances and process refunds."],
+  reports: ["Reports & exports", "Export financial reports for any period."],
+};
+function FinHead({ section }: { section: FinanceSection }) {
+  const [t, s] = SECTION_HEAD[section];
+  return <div className="mb-5"><div className="text-[11px] font-extrabold text-brand-blue">Finance</div><h1 className="font-display text-[clamp(21px,3.5vw,28px)] font-semibold leading-tight">{t}</h1><p className="mt-0.5 text-[13px] text-ink-soft">{s}</p></div>;
+}
+
+export function FinanceArea({ section }: { section: FinanceSection }) {
+  const [data, setData] = useState<FinanceData | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+  const load = useCallback(async () => { const r = await getFinanceData(); if ("error" in r) setErr(r.error); else setData(r); }, []);
+  useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t); }, [load]);
+  const flash = (m: string) => { setOk(m); setErr(null); setTimeout(() => setOk((v) => (v === m ? null : v)), 3500); };
+
+  if (section === "classsummary") return <ClassFinanceView />;
+  if (!data) return <div className="grid place-items-center gap-3 py-20 text-[13px] text-ink-soft">{err ? <><p className="font-bold text-[#b3261e]">{err}</p><button onClick={load} className="rounded-[10px] bg-brand-blue px-4 py-2 text-[12px] font-extrabold text-white">Retry</button></> : "Loading finance…"}</div>;
+
+  const banners = <>{err && <div className="mb-4 rounded-[12px] border border-[#f3c2c2] bg-[#fdeeee] px-3.5 py-2.5 text-[12px] font-bold text-[#b3261e]">{err}</div>}{ok && <div className="mb-4 rounded-[12px] border border-brand-green/30 bg-brand-green/10 px-3.5 py-2.5 text-[12px] font-bold text-brand-green">{ok}</div>}</>;
+  const noAccess = <div className="rounded-2xl border border-border-soft bg-paper/60 px-4 py-4 text-[12px] font-bold text-ink-soft">This action is available to an <span className="text-ink">admin, bursar, principal or vice-principal</span>.</div>;
+
+  return (
+    <>
+      <FinHead section={section} />
+      {banners}
+      {section === "record" && (data.canRecord ? <RecordPaymentScreen data={data} onDone={() => { flash("Payment submitted for approval."); load(); }} onErr={setErr} /> : noAccess)}
+      {section === "approvals" && <div className="grid gap-[18px] xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"><PaymentsQueueCard data={data} /><ApprovalCard data={data} onApprove={async (id) => { const r = await approvePayment(id); if ("error" in r) setErr(r.error); else { flash("Payment approved - receipt issued."); load(); } }} onReject={async (id) => { const reason = window.prompt("Reason for returning/declining this payment?"); if (reason === null) return; const r = await rejectPayment(id, reason); if ("error" in r) setErr(r.error); else { flash("Payment returned."); load(); } }} scrollAll={() => {}} /></div>}
+      {section === "bills" && (data.canRecord ? <IssueFeesCard data={data} onDone={(n) => { flash(`Fee issued - ${n} invoice${n === 1 ? "" : "s"} created.`); load(); }} onErr={setErr} /> : noAccess)}
+      {section === "invoices" && <InvoicesReceiptsCard data={data} onGenerateInvoice={() => {}} onGenerateReceipt={() => {}} />}
+      {(section === "overpayments" || section === "reports") && <div className="grid place-items-center rounded-2xl border border-dashed border-border-soft bg-white py-20 text-center"><div className="mb-2 text-3xl">🛠️</div><p className="text-[14px] font-bold text-ink">Coming soon</p><p className="mt-1 text-[12px] text-ink-soft">{SECTION_HEAD[section][1]}</p></div>}
+      {section === "overview" && <FinanceView initial={data} />}
+    </>
+  );
+}
+
+// New two-column Record payment screen: form on the left, live student summary on the right.
+function RecordPaymentScreen({ data, onDone, onErr }: { data: FinanceData; onDone: () => void; onErr: (e: string) => void }) {
+  const [studentId, setStudentId] = useState("");
+  const [invoiceId, setInvoiceId] = useState("");
+  const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState<"cash" | "transfer">("cash");
+  const [payDate, setPayDate] = useState(todayStr());
+  const [bankRef, setBankRef] = useState("");
+  const [notes, setNotes] = useState("");
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [proofName, setProofName] = useState<string | null>(null);
+
+  const student = data.students.find((s) => s.id === studentId) || null;
+  const openForStudent = useMemo(() => data.openInvoices.filter((i) => i.studentId === studentId), [data.openInvoices, studentId]);
+  const selInvoice = openForStudent.find((i) => i.id === invoiceId) || null;
+  const studentInvoices = useMemo(() => data.invoices.filter((i) => i.studentId === studentId), [data.invoices, studentId]);
+  const expected = studentInvoices.reduce((a, i) => a + i.amount, 0);
+  const paid = studentInvoices.reduce((a, i) => a + i.paid, 0);
+  const outstanding = studentInvoices.reduce((a, i) => a + i.outstanding, 0);
+  const credit = studentInvoices.reduce((a, i) => a + Math.max(0, i.paid - i.amount), 0);
+  const recent = data.payments.filter((p) => student && p.admissionNo === student.admissionNo).slice(0, 3);
+
+  function pickStudent(id: string) { setStudentId(id); setInvoiceId(""); }
+  function pickInvoice(id: string) { setInvoiceId(id); const inv = data.openInvoices.find((i) => i.id === id); if (inv) setAmount(String(inv.outstanding)); }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!studentId) { onErr("Please select a student."); return; }
+    const proof = fileRef.current?.files?.[0];
+    if (method === "transfer" && !proof) { onErr("Proof of payment is required for transfers."); return; }
+    const desc = [bankRef.trim() && `Ref: ${bankRef.trim()}`, notes.trim()].filter(Boolean).join(" · ") || selInvoice?.description || "";
+    const fd = new FormData();
+    fd.set("studentId", studentId);
+    if (invoiceId) fd.set("invoiceId", invoiceId);
+    fd.set("amount", amount); fd.set("method", method); fd.set("description", desc);
+    if (proof) fd.set("proof", proof);
+    setBusy(true);
+    const r = await recordPayment(fd);
+    setBusy(false);
+    if ("error" in r) { onErr(r.error); return; }
+    setStudentId(""); setInvoiceId(""); setAmount(""); setMethod("cash"); setBankRef(""); setNotes(""); setProofName(null); if (fileRef.current) fileRef.current.value = "";
+    onDone();
+  }
+
+  const REQ = <span className="text-[#e5484d]">*</span>;
+  return (
+    <div className="grid gap-[18px] xl:grid-cols-[minmax(0,1fr)_400px]">
+      {/* Left - form */}
+      <section className="rounded-2xl border border-border-soft bg-white p-5">
+        <h2 className="mb-4 font-display text-[16px] font-semibold">Payment details</h2>
+        {data.students.length === 0 ? <p className="text-[12px] text-ink-soft">Add students first before recording payments.</p> : (
+          <form onSubmit={submit} className="grid gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={<>Student {REQ}</>}><StudentPicker students={data.students} value={studentId} onChange={pickStudent} /></Field>
+              <Field label={<>Invoice / Fee {REQ}</>}><select value={invoiceId} onChange={(e) => pickInvoice(e.target.value)} disabled={!studentId} className={selectCls}><option value="">General payment (no invoice)</option>{openForStudent.map((i) => <option key={i.id} value={i.id}>{i.description} ({i.no}) - due {naira(i.outstanding)}</option>)}</select>{studentId && openForStudent.length === 0 && <p className="mt-1 text-[11px] text-ink-soft">No open invoices for this student.</p>}</Field>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={<>Amount paid (₦) {REQ}</>}><div className="flex items-center rounded-[10px] border border-border-soft bg-paper/60 focus-within:border-brand-blue"><span className="grid h-10 w-9 place-items-center text-ink-soft">₦</span><input value={amount} onChange={(e) => setAmount(e.target.value)} type="number" min="1" step="0.01" required placeholder="0" className="min-h-10 w-full rounded-r-[10px] bg-transparent pr-3 text-[13px] outline-none" /></div>{selInvoice && <p className="mt-1 text-[11px] font-bold text-ink-soft">Outstanding: <span className="text-[#b9540f]">{naira(selInvoice.outstanding)}</span></p>}</Field>
+              <Field label={<>Payment date {REQ}</>}><input type="date" value={payDate} max={todayStr()} onChange={(e) => setPayDate(e.target.value)} className={inputCls} /></Field>
+            </div>
+            <Field label={<>Payment method {REQ}</>}>
+              <div className="grid grid-cols-2 gap-2.5">
+                {(["cash", "transfer"] as const).map((m) => <button key={m} type="button" onClick={() => setMethod(m)} className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-[12px] border text-[13px] font-extrabold transition ${method === m ? "border-brand-blue bg-brand-soft text-brand-blue" : "border-border-soft bg-white text-ink-soft hover:border-brand-blue"}`}>{m === "cash" ? <Card2 /> : <Bank />}{m === "cash" ? "Cash" : "Transfer"}</button>)}
+              </div>
+            </Field>
+            {method === "transfer" && <Field label="Bank reference / Cheque no."><input value={bankRef} onChange={(e) => setBankRef(e.target.value)} placeholder="e.g. GTB Ref: 1234567890" className={inputCls} /></Field>}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={<>Proof of payment {method === "transfer" ? <span className="text-[#b9540f]">(required)</span> : <span className="font-bold text-ink-soft">(optional)</span>}</>}>
+                <label className="grid cursor-pointer place-items-center gap-1 rounded-[12px] border border-dashed border-border-soft bg-paper/40 px-3 py-5 text-center transition hover:border-brand-blue"><span className="grid size-9 place-items-center rounded-full bg-brand-soft text-brand-blue"><Upload /></span><span className="text-[12px] font-bold text-brand-blue">{proofName ?? "Click to upload"}<span className="font-normal text-ink-soft"> or drag and drop</span></span><span className="text-[10px] text-ink-soft">PDF, JPG, PNG (Max 5MB)</span><input ref={fileRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => setProofName(e.target.files?.[0]?.name ?? null)} /></label>
+              </Field>
+              <Field label={<>Notes <span className="font-bold text-ink-soft">(optional)</span></>}><textarea value={notes} onChange={(e) => setNotes(e.target.value.slice(0, 250))} placeholder="Add any additional information…" rows={4} className="w-full resize-none rounded-[10px] border border-border-soft bg-paper/60 px-3 py-2 text-[13px] outline-none focus:border-brand-blue focus:bg-white" /><div className="mt-0.5 text-right text-[10px] text-ink-soft">{notes.length}/250</div></Field>
+            </div>
+            {data.requireApproval && <div className="flex items-start gap-2.5 rounded-[12px] border border-brand-soft bg-brand-soft/40 p-3.5"><span className="mt-0.5 text-brand-blue"><Info /></span><p className="text-[11px] leading-relaxed text-ink-soft"><span className="font-extrabold text-ink">Maker-Checker in effect.</span> You are recording this payment. It will be submitted for approval and you cannot approve your own payment.</p></div>}
+            <button type="submit" disabled={busy} className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[12px] bg-brand-blue px-5 text-[14px] font-extrabold text-white transition hover:bg-brand-dark disabled:opacity-70"><Send />{busy ? "Submitting…" : "Submit for approval"}</button>
+          </form>
+        )}
+      </section>
+
+      {/* Right - student summary */}
+      <div className="grid content-start gap-[18px]">
+        {!student ? <div className="grid place-items-center rounded-2xl border border-dashed border-border-soft bg-white py-16 text-center text-[12px] text-ink-soft">Select a student to see their fee summary.</div> : <>
+          <section className="rounded-2xl border border-border-soft bg-white p-5">
+            <h2 className="mb-3 font-display text-[15px] font-semibold">Selected student summary</h2>
+            <div className="flex items-center gap-3"><span className="grid size-12 shrink-0 place-items-center rounded-full font-bold text-white" style={{ backgroundColor: AV[student.name.length % AV.length] }}>{initials(student.name)}</span><div className="min-w-0"><div className="flex items-center gap-2"><span className="truncate font-display text-[15px] font-semibold">{student.name}</span><span className="rounded-full bg-brand-green/10 px-2 py-0.5 text-[10px] font-extrabold text-brand-green">Active</span></div><div className="text-[11px] text-ink-soft">{student.admissionNo}{student.className ? ` · ${student.className}` : ""}</div></div></div>
+            <div className="mt-4 grid grid-cols-3 gap-2 border-t border-border-soft pt-3 text-center">
+              <div><div className="text-[10px] font-bold uppercase tracking-wide text-ink-soft">Expected</div><div className="mt-0.5 font-display text-[14px] font-bold text-ink">{naira(expected)}</div></div>
+              <div><div className="text-[10px] font-bold uppercase tracking-wide text-ink-soft">Paid</div><div className="mt-0.5 font-display text-[14px] font-bold text-brand-green">{naira(paid)}</div></div>
+              <div><div className="text-[10px] font-bold uppercase tracking-wide text-ink-soft">Outstanding</div><div className="mt-0.5 font-display text-[14px] font-bold text-[#b9540f]">{naira(outstanding)}</div></div>
+            </div>
+            <div className="mt-3 flex items-center justify-between border-t border-border-soft pt-3 text-[12px]"><span className="font-bold text-ink-soft">Credit balance</span><span className="font-extrabold text-brand-blue">{naira(credit)}</span></div>
+          </section>
+
+          <section className="rounded-2xl border border-border-soft bg-white p-5">
+            <h3 className="mb-3 font-display text-[14px] font-semibold">Recent payments</h3>
+            {recent.length === 0 ? <p className="text-[11px] text-ink-soft">No payments recorded yet.</p> : <ul className="grid gap-2">{recent.map((p) => <li key={p.id} className="flex items-center justify-between gap-2 text-[12px]"><div className="flex items-center gap-2"><span className="grid size-7 place-items-center rounded-lg bg-brand-green/10 text-brand-green"><Card2 /></span><div><div className="font-bold text-ink">{p.date}</div><div className="text-[10px] text-ink-soft capitalize">{p.method}</div></div></div><div className="flex items-center gap-2"><span className="font-bold text-ink">{naira(p.amount)}</span><Pill tone={p.status === "approved" ? "green" : p.status === "pending_approval" ? "amber" : "red"}>{p.status === "approved" ? "Approved" : p.status === "pending_approval" ? "Pending" : "Rejected"}</Pill></div></li>)}</ul>}
+          </section>
+
+          <section className="rounded-2xl border border-border-soft bg-white p-5">
+            <h3 className="mb-3 font-display text-[14px] font-semibold">Invoice preview</h3>
+            {studentInvoices.length === 0 ? <p className="text-[11px] text-ink-soft">No invoices for this student yet.</p> : <>
+              <table className="w-full text-left text-[11px]"><thead><tr className="border-b border-border-soft text-[9px] uppercase tracking-wide text-ink-soft"><th className="py-1.5 font-bold">Description</th><th className="py-1.5 text-right font-bold">Amount</th></tr></thead><tbody>{studentInvoices.slice(0, 8).map((i) => <tr key={i.id} className="border-b border-border-soft last:border-0"><td className="py-1.5 font-bold text-ink">{i.description}</td><td className="py-1.5 text-right text-ink-soft">{naira(i.amount)}</td></tr>)}</tbody></table>
+              <div className="mt-2 flex items-center justify-between border-t border-border-soft pt-2 text-[12px] font-extrabold"><span>Total</span><span>{naira(expected)}</span></div>
+            </>}
+          </section>
+        </>}
+      </div>
+    </div>
+  );
+}
 
 const naira = (n: number) => `₦${Math.round(n).toLocaleString()}`;
 const compact = (n: number) => (n >= 1_000_000 ? `₦${(n / 1_000_000).toFixed(2).replace(/\.00$/, "")}M` : n >= 1000 ? `₦${(n / 1000).toFixed(0)}k` : `₦${n}`);
@@ -69,8 +226,8 @@ export function FinanceView({ initial }: { initial?: FinanceData }) {
 
       <div className="mt-[18px] grid gap-[18px] lg:grid-cols-2 xl:grid-cols-3">
         {data.canRecord && <RecordPaymentCard data={data} onDone={() => { flash("Payment submitted for approval."); load(); }} onErr={setErr} />}
-        <ApprovalCard data={data} onApprove={async (id) => { const r = await approvePayment(id); if ("error" in r) setErr(r.error); else { flash("Payment approved — receipt issued."); load(); } }} onReject={async (id) => { const reason = window.prompt("Reason for rejecting this payment?"); if (reason === null) return; const r = await rejectPayment(id, reason); if ("error" in r) setErr(r.error); else { flash("Payment rejected."); load(); } }} scrollAll={() => scrollTo("payments-table")} />
-        {data.canRecord && <IssueFeesCard data={data} onDone={(n) => { flash(`Fee issued — ${n} invoice${n === 1 ? "" : "s"} created.`); load(); }} onErr={setErr} />}
+        <ApprovalCard data={data} onApprove={async (id) => { const r = await approvePayment(id); if ("error" in r) setErr(r.error); else { flash("Payment approved - receipt issued."); load(); } }} onReject={async (id) => { const reason = window.prompt("Reason for rejecting this payment?"); if (reason === null) return; const r = await rejectPayment(id, reason); if ("error" in r) setErr(r.error); else { flash("Payment rejected."); load(); } }} scrollAll={() => scrollTo("payments-table")} />
+        {data.canRecord && <IssueFeesCard data={data} onDone={(n) => { flash(`Fee issued - ${n} invoice${n === 1 ? "" : "s"} created.`); load(); }} onErr={setErr} />}
       </div>
 
       <div className="mt-[18px] grid gap-[18px] lg:grid-cols-2">
@@ -127,7 +284,7 @@ function RecordPaymentCard({ data, onDone, onErr }: { data: FinanceData; onDone:
             <Field label="Fee / Invoice">
               <select value={invoiceId} onChange={(e) => pickInvoice(e.target.value)} disabled={!studentId} className={selectCls}>
                 <option value="">General payment (no invoice)</option>
-                {openForStudent.map((i) => <option key={i.id} value={i.id}>{i.description} ({i.no}) — due {naira(i.outstanding)}</option>)}
+                {openForStudent.map((i) => <option key={i.id} value={i.id}>{i.description} ({i.no}) - due {naira(i.outstanding)}</option>)}
               </select>
               {selInvoice && <p className="mt-1 text-[11px] font-bold text-ink-soft">Outstanding: <span className="text-[#b9540f]">{naira(selInvoice.outstanding)}</span></p>}
               {studentId && openForStudent.length === 0 && <p className="mt-1 text-[11px] text-ink-soft">No open invoices for this student.</p>}
@@ -189,7 +346,7 @@ function ApprovalCard({ data, onApprove, onReject, scrollAll }: { data: FinanceD
           ))}
         </ul>
       )}
-      <p className="mt-3 text-[10px] leading-relaxed text-ink-soft">{data.requireApproval ? "Maker-checker is on — a different staff member must approve each payment. Change this in Settings." : "Maker-checker is off — whoever has approval rights can approve, including the recorder. Turn on a separate approver in Settings."}</p>
+      <p className="mt-3 text-[10px] leading-relaxed text-ink-soft">{data.requireApproval ? "Maker-checker is on - a different staff member must approve each payment. Change this in Settings." : "Maker-checker is off - whoever has approval rights can approve, including the recorder. Turn on a separate approver in Settings."}</p>
     </section>
   );
 }
@@ -341,17 +498,17 @@ function PaymentsQueueCard({ data }: { data: FinanceData }) {
             <tbody>{slice.map((p) => (
               <tr key={p.id} className="border-b border-border-soft last:border-0 hover:bg-paper/60">
                 <td className="px-2 py-2.5 font-bold text-ink">{p.student}</td>
-                <td className="hidden px-2 py-2.5 text-ink-soft sm:table-cell">{p.description || "—"}</td>
+                <td className="hidden px-2 py-2.5 text-ink-soft sm:table-cell">{p.description || "-"}</td>
                 <td className="px-2 py-2.5 font-extrabold text-ink">{naira(p.amount)}</td>
                 <td className="hidden px-2 py-2.5 capitalize text-ink-soft lg:table-cell">{p.method}</td>
                 <td className="hidden px-2 py-2.5 text-ink-soft lg:table-cell">{p.recordedBy}</td>
-                <td className="hidden px-2 py-2.5 text-ink-soft lg:table-cell">{p.approver ?? <span className="text-ink-soft/60">—</span>}</td>
+                <td className="hidden px-2 py-2.5 text-ink-soft lg:table-cell">{p.approver ?? <span className="text-ink-soft/60">-</span>}</td>
                 <td className="px-2 py-2.5"><Pill tone={p.status === "approved" ? "green" : p.status === "rejected" ? "red" : "amber"}>{p.status === "approved" ? "Approved" : p.status === "rejected" ? "Rejected" : "Pending approval"}</Pill></td>
                 <td className="hidden px-2 py-2.5 text-ink-soft md:table-cell">{p.date}</td>
                 <td className="px-2 py-2.5"><div className="flex justify-end gap-1">
                   {p.proofKey && <a href={p.proofKey} target="_blank" rel="noreferrer" title="View proof" className="grid size-7 place-items-center rounded-md text-ink-soft transition hover:bg-paper hover:text-brand-blue"><Eye /></a>}
                   {p.status === "approved" && (p.receiptKey || p.id) && <a href={p.receiptKey ? `/r/${p.receiptKey}` : `/receipt/${p.id}`} target="_blank" rel="noreferrer" title="Receipt" className="grid size-7 place-items-center rounded-md text-ink-soft transition hover:bg-paper hover:text-brand-blue"><Download /></a>}
-                  {!p.proofKey && p.status !== "approved" && <span className="text-ink-soft/50">—</span>}
+                  {!p.proofKey && p.status !== "approved" && <span className="text-ink-soft/50">-</span>}
                 </div></td>
               </tr>
             ))}</tbody>
@@ -433,6 +590,7 @@ const Send = () => svg(<><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z" /></>);
 const Users = () => svg(<><circle cx="9" cy="8" r="3" /><path d="M3 20c0-3 3-5 6-5s6 2 6 5" /><path d="M16 6a3 3 0 0 1 0 6M21 20c0-2-1-3.5-3-4.5" /></>);
 const Eye = () => svg(<><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="2.5" /></>);
 const Download = () => svg(<><path d="M12 3v12M8 11l4 4 4-4" /><path d="M4 19h16" /></>);
+const Info = () => svg(<><circle cx="12" cy="12" r="9" /><path d="M12 16v-4M12 8h.01" /></>);
 const Search = () => svg(<><circle cx="11" cy="11" r="7" /><path d="m21 21-3.5-3.5" /></>);
 const Check = () => svg(<><path d="M5 12l5 5 9-11" /></>);
 const X = () => svg(<><path d="M6 6l12 12M18 6 6 18" /></>);

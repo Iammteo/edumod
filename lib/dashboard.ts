@@ -1,5 +1,5 @@
 // Server-side data helpers for the role dashboards. Plain async functions called from the
-// dashboard server component — they read real data so the dashboards stop showing mock numbers.
+// dashboard server component - they read real data so the dashboards stop showing mock numbers.
 import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { invoices, payments, students, studentResults } from "@/db/schema";

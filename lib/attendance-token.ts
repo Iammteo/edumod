@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 // HMAC-signed, time-stamped token for the rotating kiosk QR. The secret lives only on the server,
-// so a teacher's phone can't forge a token — and because it carries a server timestamp, the
+// so a teacher's phone can't forge a token - and because it carries a server timestamp, the
 // clock-in action can reject anything older than the grace window (replay / shared-screenshot guard).
 const SECRET = process.env.ATTENDANCE_QR_SECRET || process.env.BETTER_AUTH_SECRET || "dev-attendance-secret-change-me";
 const b64url = (b: Buffer) => b.toString("base64url");

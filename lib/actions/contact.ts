@@ -10,7 +10,7 @@ export async function submitContact(input: { name: string; email: string; school
   const email = input.email?.trim();
   const school = input.school?.trim();
   const message = input.message?.trim();
-  const phone = input.phone?.trim() || "—";
+  const phone = input.phone?.trim() || "-";
   if (!name || !email || !school || !message) return { error: "Please fill in your name, email, school and message." };
   if (!isEmail(email)) return { error: "Please enter a valid email address." };
   if (message.length > 5000) return { error: "Message is too long." };
@@ -19,7 +19,7 @@ export async function submitContact(input: { name: string; email: string; school
   try {
     await sendEmail({
       to,
-      subject: `New Edumod enquiry — ${school}`,
+      subject: `New Edumod enquiry - ${school}`,
       text: [`Name: ${name}`, `Email: ${email}`, `School: ${school}`, `Phone: ${phone}`, ``, `Message:`, message].join("\n"),
     });
     return { ok: true };

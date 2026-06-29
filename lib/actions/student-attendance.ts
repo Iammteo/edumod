@@ -1,10 +1,10 @@
 "use server";
 
 import { headers } from "next/headers";
-import { and, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { memberships, staffProfiles, students, studentAttendance } from "@/db/schema";
+import { auditLogs, memberships, staffProfiles, students, studentAttendance, users } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
 
 type Status = "present" | "absent" | "late" | "excused";
@@ -35,19 +35,60 @@ export async function getMarkableClasses(): Promise<MarkableClass[]> {
   return c.assignedClass ? [{ className: c.assignedClass, mine: true }] : [];
 }
 
-export type AttnRow = { id: string; name: string; admissionNo: string; status: Status | null };
-export type StudentAttendance = { canMark: boolean; rows: AttnRow[]; present: number; absent: number; marked: number };
+export type AttnRow = { id: string; name: string; admissionNo: string; guardianPhone: string | null; status: Status | null };
+export type AttnCounts = { total: number; present: number; absent: number; late: number; excused: number; unmarked: number };
+export type ClassTeacher = { name: string; email: string | null } | null;
+export type StudentAttendance = { canMark: boolean; rows: AttnRow[]; counts: AttnCounts; teacher: ClassTeacher; present: number; absent: number; marked: number };
 export async function getStudentAttendance(className: string, date: string): Promise<StudentAttendance | { error: string }> {
   const c = await ctx();
   if (!c) return { error: "Not authorised." };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: "Invalid date." };
-  const [roster, marks] = await Promise.all([
-    db.select({ id: students.id, fn: students.firstName, ln: students.lastName, admissionNo: students.admissionNo }).from(students).where(and(eq(students.schoolId, c.schoolId), eq(students.className, className))).orderBy(students.firstName),
+  const [roster, marks, teacherRow] = await Promise.all([
+    db.select({ id: students.id, fn: students.firstName, ln: students.lastName, admissionNo: students.admissionNo, phone: students.guardianPhone }).from(students).where(and(eq(students.schoolId, c.schoolId), eq(students.className, className))).orderBy(students.firstName),
     db.select({ studentId: studentAttendance.studentId, status: studentAttendance.status }).from(studentAttendance).where(and(eq(studentAttendance.schoolId, c.schoolId), eq(studentAttendance.attendanceDate, date))),
+    db.select({ name: users.name, email: users.email }).from(staffProfiles).innerJoin(users, eq(users.id, staffProfiles.userId)).where(and(eq(staffProfiles.schoolId, c.schoolId), eq(staffProfiles.assignedClass, className), eq(staffProfiles.isClassTeacher, true))).limit(1),
   ]);
   const map = new Map(marks.map((m) => [m.studentId, m.status as Status]));
-  const rows: AttnRow[] = roster.map((s) => ({ id: s.id, name: `${s.fn} ${s.ln}`.trim(), admissionNo: s.admissionNo, status: map.get(s.id) ?? null }));
-  return { canMark: canMark(c, className), rows, present: rows.filter((r) => r.status === "present" || r.status === "late").length, absent: rows.filter((r) => r.status === "absent").length, marked: rows.filter((r) => r.status).length };
+  const rows: AttnRow[] = roster.map((s) => ({ id: s.id, name: `${s.fn} ${s.ln}`.trim(), admissionNo: s.admissionNo, guardianPhone: s.phone, status: map.get(s.id) ?? null }));
+  const n = (st: Status) => rows.filter((r) => r.status === st).length;
+  const counts: AttnCounts = { total: rows.length, present: n("present"), absent: n("absent"), late: n("late"), excused: n("excused"), unmarked: rows.filter((r) => !r.status).length };
+  return { canMark: canMark(c, className), rows, counts, teacher: teacherRow[0] ?? null, present: counts.present + counts.late, absent: counts.absent, marked: rows.filter((r) => r.status).length };
+}
+
+// Right-rail analytics for the attendance dashboard: per-class rates today, this week's trend for the
+// selected class, and recent attendance activity.
+function mondayToFriday(dateStr: string): { label: string; iso: string }[] {
+  const d = new Date(dateStr + "T00:00"); const dow = (d.getDay() + 6) % 7; const mon = new Date(d.getTime() - dow * 864e5);
+  return ["Mon", "Tue", "Wed", "Thu", "Fri"].map((label, i) => { const x = new Date(mon.getTime() + i * 864e5); return { label, iso: `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}` }; });
+}
+export type ClassRate = { className: string; rate: number; present: number; total: number };
+export type DayRate = { label: string; rate: number };
+export type ActivityItem = { text: string; time: string; kind: "marked" | "cleared" };
+export type AttendanceAnalytics = { byClass: ClassRate[]; week: DayRate[]; recent: ActivityItem[] };
+export async function getAttendanceAnalytics(className: string, date: string): Promise<AttendanceAnalytics> {
+  const c = await ctx();
+  if (!c) return { byClass: [], week: [], recent: [] };
+  const days = mondayToFriday(date);
+  const [rosterCounts, dayMarks, weekMarks, recentRows] = await Promise.all([
+    db.select({ cn: students.className, n: sql<number>`count(*)::int` }).from(students).where(eq(students.schoolId, c.schoolId)).groupBy(students.className),
+    db.select({ cn: studentAttendance.className, status: studentAttendance.status }).from(studentAttendance).where(and(eq(studentAttendance.schoolId, c.schoolId), eq(studentAttendance.attendanceDate, date))),
+    db.select({ d: studentAttendance.attendanceDate, status: studentAttendance.status }).from(studentAttendance).where(and(eq(studentAttendance.schoolId, c.schoolId), eq(studentAttendance.className, className), gte(studentAttendance.attendanceDate, days[0].iso), lte(studentAttendance.attendanceDate, days[days.length - 1].iso))),
+    db.select({ action: auditLogs.action, meta: auditLogs.metadata, createdAt: auditLogs.createdAt, actor: users.name }).from(auditLogs).leftJoin(users, eq(users.id, auditLogs.actorUserId)).where(and(eq(auditLogs.schoolId, c.schoolId), inArray(auditLogs.action, ["attendance.class_marked", "attendance.class_cleared"]))).orderBy(desc(auditLogs.createdAt)).limit(6),
+  ]);
+  const totalByClass = new Map(rosterCounts.filter((r) => r.cn).map((r) => [r.cn as string, r.n]));
+  const presentByClass = new Map<string, number>();
+  for (const m of dayMarks) if (m.cn && m.status === "present") presentByClass.set(m.cn, (presentByClass.get(m.cn) ?? 0) + 1);
+  const byClass: ClassRate[] = [...totalByClass.entries()].map(([cn, total]) => { const present = presentByClass.get(cn) ?? 0; return { className: cn, total, present, rate: total ? Math.round((present / total) * 100) : 0 }; }).sort((a, b) => a.className.localeCompare(b.className));
+  const classTotal = totalByClass.get(className) ?? 0;
+  const presentByDay = new Map<string, number>();
+  for (const m of weekMarks) if (m.status === "present") presentByDay.set(m.d as string, (presentByDay.get(m.d as string) ?? 0) + 1);
+  const week: DayRate[] = days.map((d) => ({ label: d.label, rate: classTotal ? Math.round(((presentByDay.get(d.iso) ?? 0) / classTotal) * 100) : 0 }));
+  const recent: ActivityItem[] = recentRows.map((r) => {
+    const meta = (r.meta ?? {}) as { className?: string };
+    const cleared = r.action === "attendance.class_cleared";
+    return { text: `${meta.className ?? "A class"} attendance ${cleared ? "cleared" : "marked"}${r.actor ? ` by ${r.actor}` : ""}`, time: new Date(r.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }), kind: cleared ? "cleared" : "marked" };
+  });
+  return { byClass, week, recent };
 }
 
 // Printable student register for a class, by day or week.
@@ -55,7 +96,7 @@ const STATUS_LABEL: Record<string, string> = { present: "Present", absent: "Abse
 const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 export type StudentAttnReportRow = { date: string; name: string; admissionNo: string; className: string; status: string };
 // Pass className === "__all__" for the whole-school scope (admin only). The client mirrors this
-// value as ALL_CLASSES — a "use server" file may only export async functions, so it can't live here.
+// value as ALL_CLASSES - a "use server" file may only export async functions, so it can't live here.
 export async function getStudentAttendanceReport(className: string, from: string, to: string): Promise<StudentAttnReportRow[] | { error: string }> {
   const c = await ctx();
   if (!c) return { error: "Not authorised." };
@@ -74,7 +115,7 @@ export async function getStudentAttendanceReport(className: string, from: string
   const rows: StudentAttnReportRow[] = [];
   for (const day of days) for (const s of roster) {
     const st = markMap.get(`${s.id}|${day}`);
-    rows.push({ date: day, name: `${s.fn} ${s.ln}`.trim(), admissionNo: s.admissionNo, className: s.cn ?? "—", status: st ? (STATUS_LABEL[st] ?? st) : "—" });
+    rows.push({ date: day, name: `${s.fn} ${s.ln}`.trim(), admissionNo: s.admissionNo, className: s.cn ?? "-", status: st ? (STATUS_LABEL[st] ?? st) : "-" });
   }
   return rows;
 }

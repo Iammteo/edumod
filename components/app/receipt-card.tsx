@@ -23,7 +23,7 @@ export type ReceiptData = {
 };
 export type ReceiptSchool = { name: string | null; address: string | null; state: string | null; country: string | null; schoolCode: string | null } | undefined;
 
-// Shared receipt document — rendered by the staff route (/receipt/[id]) and the public share
+// Shared receipt document - rendered by the staff route (/receipt/[id]) and the public share
 // route (/r/[token]). `shareToken` enables the Share button; pass null to hide it.
 export function ReceiptCard({ p, school, shareToken }: { p: ReceiptData; school: ReceiptSchool; shareToken?: string | null }) {
   const no = `RCP-${p.id.slice(0, 8).toUpperCase()}`;
@@ -60,15 +60,15 @@ export function ReceiptCard({ p, school, shareToken }: { p: ReceiptData; school:
           <dl className="grid gap-0">{rows.map(([k, v]) => <div key={k} className="flex justify-between gap-4 border-b border-border-soft py-3 last:border-0"><dt className="text-[12px] font-bold text-ink-soft">{k}</dt><dd className="text-right text-[13px] font-bold text-ink">{v}</dd></div>)}</dl>
           {hasInvoice && (
             <div className={`mt-4 flex items-center justify-between rounded-xl border px-4 py-3 ${isPartial ? "border-[#f0d3a8] bg-[#fdf6e9]" : "border-brand-green/30 bg-brand-green/10"}`}>
-              <span className={`text-[12px] font-extrabold uppercase tracking-wide ${isPartial ? "text-[#b9540f]" : "text-brand-green"}`}>{isPartial ? "Outstanding balance" : "Balance — fully paid"}</span>
+              <span className={`text-[12px] font-extrabold uppercase tracking-wide ${isPartial ? "text-[#b9540f]" : "text-brand-green"}`}>{isPartial ? "Outstanding balance" : "Balance - fully paid"}</span>
               <span className={`font-display text-[20px] font-bold ${isPartial ? "text-[#b9540f]" : "text-brand-green"}`}>{naira(outstanding)}</span>
             </div>
           )}
           {isPartial && <p className="mt-2 text-center text-[11px] font-bold text-[#b9540f]">This is a part-payment. ₦{outstanding.toLocaleString()} is still outstanding on this fee.</p>}
           {(p.recordedBy || p.approvedBy) && (
             <div className="mt-6 grid grid-cols-2 gap-4 border-t border-border-soft pt-4 text-[11px]">
-              <div><div className="font-bold uppercase tracking-wide text-ink-soft">Recorded by</div><div className="mt-0.5 text-[13px] font-bold text-ink">{p.recordedBy ?? "—"}</div></div>
-              <div className="text-right"><div className="font-bold uppercase tracking-wide text-ink-soft">Approved by</div><div className="mt-0.5 text-[13px] font-bold text-ink">{p.approvedBy ?? "—"}</div></div>
+              <div><div className="font-bold uppercase tracking-wide text-ink-soft">Recorded by</div><div className="mt-0.5 text-[13px] font-bold text-ink">{p.recordedBy ?? "-"}</div></div>
+              <div className="text-right"><div className="font-bold uppercase tracking-wide text-ink-soft">Approved by</div><div className="mt-0.5 text-[13px] font-bold text-ink">{p.approvedBy ?? "-"}</div></div>
             </div>
           )}
           {p.proofKey && <div className="mt-6"><div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-ink-soft">Proof of payment</div><img src={p.proofKey} alt="Proof of payment" className="max-h-72 w-full rounded-xl border border-border-soft object-contain" /></div>}

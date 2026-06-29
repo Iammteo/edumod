@@ -33,7 +33,7 @@ export async function updateSchoolProfile(input: { name?: string; email?: string
   if (input.currentSession?.trim()) patch.currentSession = input.currentSession.trim();
   if (input.currentTerm?.trim()) patch.currentTerm = input.currentTerm.trim();
   if (typeof input.requireApproval === "boolean") patch.requireApproval = input.requireApproval;
-  // School day hours ("HH:MM" or "" to clear) — used to flag Late / left-early on the staff register.
+  // School day hours ("HH:MM" or "" to clear) - used to flag Late / left-early on the staff register.
   for (const f of ["dayStartsAt", "dayEndsAt"] as const) {
     const v = input[f];
     if (v === undefined) continue;

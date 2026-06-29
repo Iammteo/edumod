@@ -21,7 +21,7 @@ function Err({ msg }: { msg: string | null }) {
   return msg ? <p className="text-[11px] font-bold text-[#b3261e]">{msg}</p> : null;
 }
 
-// One-time credential display — admin/teacher copies these before they're gone.
+// One-time credential display - admin/teacher copies these before they're gone.
 function Credentials({ title, rows, note }: { title: string; rows: [string, string][]; note: string }) {
   return (
     <div className="rounded-[10px] border border-brand-blue/30 bg-brand-soft/40 p-3 motion-safe:animate-[fade-up_.3s_ease]">
@@ -67,7 +67,7 @@ export function AddStudentForm() {
       </label>
       <Submit busy={busy}>Create student</Submit>
       <Err msg={error} />
-      {created && <Credentials title="Student created — share these now" rows={[["Student ID", created.studentId], ["Password", created.password]]} note="The password is shown once. They log in with your school code + Student ID + this password." />}
+      {created && <Credentials title="Student created - share these now" rows={[["Student ID", created.studentId], ["Password", created.password]]} note="The password is shown once. They log in with your school code + Student ID + this password." />}
     </form>
   );
 }
@@ -92,7 +92,7 @@ export function ResetStudentPasswordForm() {
       <Field label="Student ID" name="studentId" placeholder="2623844" />
       <Submit busy={busy}>Reset password</Submit>
       <Err msg={error} />
-      {result && <Credentials title={`New password for ${result.studentName}`} rows={[["Password", result.password]]} note="Shown once — hand it over now." />}
+      {result && <Credentials title={`New password for ${result.studentName}`} rows={[["Password", result.password]]} note="Shown once - hand it over now." />}
     </form>
   );
 }

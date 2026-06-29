@@ -177,7 +177,7 @@ export async function updateStudentProfile(studentId: string, input: { className
   };
   // Field-level diff so the audit log can show exactly what changed (old → new).
   const changes: { field: string; old: string; new: string }[] = [];
-  const cmp = (label: string, o: string, n: string) => { if ((o || "") !== (n || "")) changes.push({ field: label, old: o || "—", new: n || "—" }); };
+  const cmp = (label: string, o: string, n: string) => { if ((o || "") !== (n || "")) changes.push({ field: label, old: o || "-", new: n || "-" }); };
   cmp("Class", stu.className || "", input.className?.trim() || "");
   ([["sex", "Sex"], ["dateOfBirth", "Date of birth"], ["genotype", "Genotype"], ["bloodGroup", "Blood group"], ["house", "House"], ["arm", "Arm"], ["religion", "Religion"], ["nationality", "Nationality"], ["stateOfOrigin", "State of origin"], ["lga", "LGA"], ["address", "Address"], ["medicalNotes", "Medical note"], ["allergies", "Allergies"], ["specialSupport", "Special support"], ["dietaryNotes", "Dietary notes"], ["notes", "Notes"]] as [keyof StudentBio, string][]).forEach(([k, label]) => cmp(label, String(oldBio[k] || ""), String((b as Record<string, unknown>)[k] || "")));
   (["guardian1", "guardian2"] as const).forEach((gk, i) => (["name", "relationship", "phone", "email", "occupation", "address"] as const).forEach((f) => cmp(`Guardian ${i + 1} ${f}`, oldBio[gk][f], b[gk][f])));
@@ -238,7 +238,7 @@ export async function regenerateStudentPassword(studentId: string): Promise<{ ok
 }
 
 // Permanently removes a student + their login. Admin only, and blocked once they have payment
-// records (delete would erase the financial trail — those students should be withdrawn, not deleted).
+// records (delete would erase the financial trail - those students should be withdrawn, not deleted).
 export async function removeStudent(studentId: string): Promise<{ ok: true } | { error: string }> {
   const c = await ctx();
   if (c?.role !== "school_admin") return { error: "Only an admin can remove a student." };
@@ -259,7 +259,7 @@ export async function removeStudent(studentId: string): Promise<{ ok: true } | {
 }
 
 // Bulk-resets logins for a class (or all students) and returns the new credentials once, for a
-// printable sheet. Existing passwords can't be shown (they're hashed) — this regenerates them.
+// printable sheet. Existing passwords can't be shown (they're hashed) - this regenerates them.
 export type Credential = { name: string; studentId: string; password: string; className: string | null };
 export async function bulkResetPasswords(input: { className?: string }): Promise<{ ok: true; credentials: Credential[] } | { error: string }> {
   const c = await ctx();
@@ -269,7 +269,7 @@ export async function bulkResetPasswords(input: { className?: string }): Promise
   const where = className ? and(eq(students.schoolId, c.schoolId), eq(students.className, className)) : eq(students.schoolId, c.schoolId);
   const rows = (await db.select({ userId: students.userId, fn: students.firstName, ln: students.lastName, admissionNo: students.admissionNo, className: students.className }).from(students).where(where).orderBy(asc(students.className), asc(students.firstName)).limit(300)).filter((r) => r.userId);
   if (rows.length === 0) return { error: "No students with logins in that scope." };
-  if (rows.length > 250) return { error: "Too many at once — reset by class instead (up to 250)." };
+  if (rows.length > 250) return { error: "Too many at once - reset by class instead (up to 250)." };
   const creds = rows.map((r) => ({ ...r, password: generateStudentPassword(school?.name), hash: "" }));
   for (const cr of creds) cr.hash = await hashPassword(cr.password);
   try {

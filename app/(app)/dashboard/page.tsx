@@ -14,7 +14,7 @@ function describeAudit(action: string, m: Record<string, unknown>): string {
   const cls = m.className ? ` (${str(m.className)})` : "";
   switch (action) {
     case "student.added": return `${str(m.name) || "Student"}${cls} enrolled${m.admissionNo ? ` · ${str(m.admissionNo)}` : ""}`;
-    case "student.updated": return `${str(m.name) || "Student"}${cls} — profile updated`;
+    case "student.updated": return `${str(m.name) || "Student"}${cls} - profile updated`;
     case "payment.recorded": return `${naira(m.amount)} recorded for ${str(m.student) || "a student"}${m.method ? ` · ${str(m.method)}` : ""}`;
     case "payment.approved": return `${naira(m.amount)} for ${str(m.student) || "a student"} approved`;
     case "payment.rejected": return `${naira(m.amount)} for ${str(m.student) || "a student"} rejected`;
@@ -42,7 +42,7 @@ export default async function DashboardPage() {
   const school = membership ? (await db.select().from(schools).where(eq(schools.id, membership.schoolId)).limit(1))[0] : undefined;
   const schoolName = school?.name ?? "Your school";
   const termLabel = `${school?.currentSession ?? "2023/2024"} · ${school?.currentTerm ?? "Term 2"}`;
-  const schoolCode = school?.schoolCode ?? "—";
+  const schoolCode = school?.schoolCode ?? "-";
 
   if (role === "admin") {
     const sid = membership?.schoolId;

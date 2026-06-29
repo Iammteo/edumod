@@ -11,7 +11,7 @@ export type Db = NodePgDatabase<typeof schema>;
 //
 // Race-safe: the upsert targets the (schoolId, year) primary key. The first writer inserts
 // last_seq = 1; every concurrent writer hits ON CONFLICT DO UPDATE, which takes a row lock and
-// increments last_seq, so Postgres serialises them — no two callers can read the same value.
+// increments last_seq, so Postgres serialises them - no two callers can read the same value.
 // The (schoolId, admissionNo) unique constraint on `students` is the final backstop.
 export async function allocateStudentId(db: Db, schoolId: string, year: number): Promise<{ admissionNo: string; seq: number }> {
   const [row] = await db

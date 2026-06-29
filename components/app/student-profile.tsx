@@ -63,7 +63,7 @@ export function StudentProfilePage({ studentId, onBack, onChanged }: { studentId
         </div>
       </div>
       {err && <div className="mb-3 rounded-[10px] border border-[#f3c2c2] bg-[#fdeeee] px-3 py-2 text-[12px] font-bold text-[#b3261e]">{err}</div>}
-      {pwd && <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-brand-blue/30 bg-brand-soft/40 px-3.5 py-2.5"><span className="text-[12px] font-bold text-ink">New password for {data.name}: <code className="select-all rounded bg-white px-2 py-0.5 text-[13px] font-extrabold text-brand-blue">{pwd}</code> — share it now, it won&rsquo;t be shown again.</span><button onClick={() => setPwd(null)} className="text-[12px] font-extrabold text-brand-blue hover:underline">Dismiss</button></div>}
+      {pwd && <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-brand-blue/30 bg-brand-soft/40 px-3.5 py-2.5"><span className="text-[12px] font-bold text-ink">New password for {data.name}: <code className="select-all rounded bg-white px-2 py-0.5 text-[13px] font-extrabold text-brand-blue">{pwd}</code> - share it now, it won&rsquo;t be shown again.</span><button onClick={() => setPwd(null)} className="text-[12px] font-extrabold text-brand-blue hover:underline">Dismiss</button></div>}
 
       {/* Header card */}
       <div className="rounded-2xl border border-border-soft bg-white p-5">
@@ -77,11 +77,11 @@ export function StudentProfilePage({ studentId, onBack, onChanged }: { studentId
               <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start"><h1 className="font-display text-[22px] font-semibold leading-tight">{data.name}</h1><span className="rounded-full bg-brand-green/10 px-2 py-0.5 text-[10px] font-extrabold text-brand-green">Active</span></div>
               <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-2.5 text-left sm:grid-cols-3">
                 <Fact k="Admission no." v={data.admissionNo} />
-                <Fact k="Class" v={data.className ?? "—"} />
-                <Fact k="Arm" v={b.arm || "—"} />
-                <Fact k="House" v={b.house || "—"} />
-                <Fact k="Date of birth" v={b.dateOfBirth ? `${b.dateOfBirth}${age(b.dateOfBirth) ? ` (${age(b.dateOfBirth)})` : ""}` : "—"} />
-                <Fact k="Gender" v={b.sex || "—"} />
+                <Fact k="Class" v={data.className ?? "-"} />
+                <Fact k="Arm" v={b.arm || "-"} />
+                <Fact k="House" v={b.house || "-"} />
+                <Fact k="Date of birth" v={b.dateOfBirth ? `${b.dateOfBirth}${age(b.dateOfBirth) ? ` (${age(b.dateOfBirth)})` : ""}` : "-"} />
+                <Fact k="Gender" v={b.sex || "-"} />
               </div>
               <p className="mt-3 text-[12px] text-ink-soft">📍 {b.address || "No address on file"}{data.enrolledOn ? `  ·  Enrolled ${data.enrolledOn}` : ""}</p>
             </div>
@@ -121,8 +121,8 @@ function QuickSummary({ data }: { data: StudentProfile }) {
     <div className="rounded-2xl border border-border-soft bg-paper/40 p-4">
       <div className="mb-3 flex items-center gap-1.5 text-[12px] font-extrabold"><span className="text-brand-green">◆</span>Quick summary</div>
       <div className="grid grid-cols-3 gap-3">
-        {meter("Current average", s.average != null ? `${s.average}%` : "—", s.average != null ? gradeWord(s.average) : "No results", s.average != null ? "#178a4c" : "#8d98aa")}
-        {meter("Class position", s.position ? `${s.position} / ${s.classSize}` : "—", s.position && s.classSize ? `Top ${Math.max(1, Math.round((s.position / s.classSize) * 100))}%` : "—", "#2159e8")}
+        {meter("Current average", s.average != null ? `${s.average}%` : "-", s.average != null ? gradeWord(s.average) : "No results", s.average != null ? "#178a4c" : "#8d98aa")}
+        {meter("Class position", s.position ? `${s.position} / ${s.classSize}` : "-", s.position && s.classSize ? `Top ${Math.max(1, Math.round((s.position / s.classSize) * 100))}%` : "-", "#2159e8")}
         {meter("Fees paid", `${paidPct}%`, f.outstanding > 0 ? `${naira(f.outstanding)} owing` : "Cleared", f.outstanding > 0 ? "#b9540f" : "#178a4c")}
       </div>
     </div>
@@ -134,7 +134,7 @@ function gradeWord(avg: number) { return avg >= 70 ? "Excellent" : avg >= 60 ? "
 function Card({ title, action, children, tone }: { title: string; action?: React.ReactNode; children: React.ReactNode; tone?: "amber" }) {
   return <section className={`rounded-2xl border p-4 ${tone === "amber" ? "border-[#f0d3a8] bg-[#fdf6e9]" : "border-border-soft bg-white"}`}><div className="mb-2.5 flex items-center justify-between"><h3 className="flex items-center gap-1.5 font-display text-[14px] font-semibold">{title}</h3>{action}</div>{children}</section>;
 }
-function Row({ k, v }: { k: string; v: string }) { return <div className="flex justify-between gap-4 border-b border-border-soft py-2 last:border-0"><dt className="text-[12px] font-bold text-ink-soft">{k}</dt><dd className="max-w-[60%] text-right text-[12px] font-bold text-ink">{v || "—"}</dd></div>; }
+function Row({ k, v }: { k: string; v: string }) { return <div className="flex justify-between gap-4 border-b border-border-soft py-2 last:border-0"><dt className="text-[12px] font-bold text-ink-soft">{k}</dt><dd className="max-w-[60%] text-right text-[12px] font-bold text-ink">{v || "-"}</dd></div>; }
 
 function OverviewTab({ data, goEdit, goTab }: { data: StudentProfile; goEdit: () => void; goTab: (t: Tab) => void }) {
   const b = data.bio, f = data.financial;
@@ -159,7 +159,7 @@ function OverviewTab({ data, goEdit, goTab }: { data: StudentProfile; goEdit: ()
           <Mini label="Total assigned" v={naira(f.invoiced)} c="#2159e8" />
           <Mini label="Paid so far" v={naira(f.paid)} c="#178a4c" />
           <Mini label="Outstanding" v={naira(f.outstanding)} c="#b9540f" />
-          <Mini label="Next due" v={f.nextDue ?? "—"} c="#6b2fb3" />
+          <Mini label="Next due" v={f.nextDue ?? "-"} c="#6b2fb3" />
         </div>
         <div className="mt-3">
           <div className="mb-1.5 text-[11px] font-extrabold text-ink-soft">Recent payments</div>
@@ -238,7 +238,7 @@ function CreditPanel({ data, onChanged, onErr }: { data: StudentProfile; onChang
   return (
     <div className="rounded-2xl border border-[#bfe3cf] bg-brand-green/5 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><div className="flex items-center gap-1.5 text-[12px] font-extrabold text-brand-green">↑ Overpaid — credit balance</div><div className="mt-0.5 font-display text-[22px] font-bold text-brand-green">{naira(f.credit)}</div></div>
+        <div><div className="flex items-center gap-1.5 text-[12px] font-extrabold text-brand-green">↑ Overpaid - credit balance</div><div className="mt-0.5 font-display text-[22px] font-bold text-brand-green">{naira(f.credit)}</div></div>
         {data.canManage && f.credit > 0 && !pending && mode === "none" && (
           <div className="flex flex-wrap gap-2"><button onClick={carry} disabled={busy} className="inline-flex min-h-9 items-center rounded-[10px] border border-border-soft bg-white px-3.5 text-[12px] font-extrabold text-ink transition hover:border-brand-blue disabled:opacity-60">Carry forward to next term</button><button onClick={() => setMode("refund")} className="inline-flex min-h-9 items-center rounded-[10px] bg-brand-blue px-3.5 text-[12px] font-extrabold text-white transition hover:bg-brand-dark">Request refund</button></div>
         )}
@@ -276,15 +276,15 @@ function FinanceTab({ data, onChanged, onErr }: { data: StudentProfile; onChange
       <div className="grid content-start gap-4">
         <CreditPanel data={data} onChanged={onChanged} onErr={onErr} />
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Mini label="Total billed" v={naira(f.invoiced)} c="#2159e8" /><Mini label="Paid so far" v={naira(f.paid)} c="#178a4c" /><Mini label="Outstanding" v={naira(f.outstanding)} c="#b9540f" /><Mini label="Next due" v={f.nextDue ?? "—"} c="#6b2fb3" />
+          <Mini label="Total billed" v={naira(f.invoiced)} c="#2159e8" /><Mini label="Paid so far" v={naira(f.paid)} c="#178a4c" /><Mini label="Outstanding" v={naira(f.outstanding)} c="#b9540f" /><Mini label="Next due" v={f.nextDue ?? "-"} c="#6b2fb3" />
         </div>
         {f.outstanding > 0 && <div className="rounded-xl border border-[#f0d3a8] bg-[#fdf6e9] px-3.5 py-2.5 text-[12px] font-bold text-[#b9540f]">{paidPct}% paid · {naira(f.outstanding)} mandatory remaining. Ensure balances are cleared before exam clearance or promotion.</div>}
-        {f.optionalDue > 0 && <div className="rounded-xl border border-border-soft bg-paper/50 px-3.5 py-2.5 text-[12px] font-bold text-ink-soft">Plus <span className="text-[#b9540f]">{naira(f.optionalDue)}</span> in optional fees — not required for clearance.</div>}
+        {f.optionalDue > 0 && <div className="rounded-xl border border-border-soft bg-paper/50 px-3.5 py-2.5 text-[12px] font-bold text-ink-soft">Plus <span className="text-[#b9540f]">{naira(f.optionalDue)}</span> in optional fees - not required for clearance.</div>}
         <Card title="📒 Student finance ledger">
           {f.ledger.length === 0 ? <p className="text-[12px] text-ink-soft">No financial activity yet.</p> : (
             <div className="overflow-x-auto"><table className="w-full min-w-[420px] text-left text-[12px]">
               <thead><tr className="border-b border-border-soft text-[9px] uppercase tracking-wide text-ink-soft"><th className="py-1.5 font-bold">Date</th><th className="py-1.5 font-bold">Description</th><th className="py-1.5 text-right font-bold">Amount</th><th className="py-1.5 text-right font-bold">Balance</th><th className="py-1.5 font-bold">Ref</th></tr></thead>
-              <tbody>{f.ledger.map((e, i) => <tr key={i} className="border-b border-border-soft last:border-0"><td className="py-2 text-ink-soft">{e.date}</td><td className="py-2 font-bold text-ink">{e.description}{e.method ? <span className="ml-1 font-normal capitalize text-ink-soft">· {e.method}</span> : ""}</td><td className={`py-2 text-right font-extrabold ${e.amount < 0 ? "text-brand-green" : "text-ink"}`}>{e.amount < 0 ? "+" : ""}{naira(Math.abs(e.amount))}</td><td className="py-2 text-right text-ink-soft">{naira(e.balance)}</td><td className="py-2 text-[10px] text-ink-soft">{e.receiptNo ?? "—"}</td></tr>)}</tbody>
+              <tbody>{f.ledger.map((e, i) => <tr key={i} className="border-b border-border-soft last:border-0"><td className="py-2 text-ink-soft">{e.date}</td><td className="py-2 font-bold text-ink">{e.description}{e.method ? <span className="ml-1 font-normal capitalize text-ink-soft">· {e.method}</span> : ""}</td><td className={`py-2 text-right font-extrabold ${e.amount < 0 ? "text-brand-green" : "text-ink"}`}>{e.amount < 0 ? "+" : ""}{naira(Math.abs(e.amount))}</td><td className="py-2 text-right text-ink-soft">{naira(e.balance)}</td><td className="py-2 text-[10px] text-ink-soft">{e.receiptNo ?? "-"}</td></tr>)}</tbody>
             </table></div>
           )}
           <div className="mt-3 flex flex-wrap justify-between gap-2 rounded-xl bg-paper/60 px-3 py-2 text-[11px]"><span className="font-bold text-ink-soft">Total invoiced <strong className="text-ink">{naira(f.invoiced)}</strong></span><span className="font-bold text-ink-soft">Total paid <strong className="text-brand-green">{naira(f.paid)}</strong></span><span className="font-bold text-ink-soft">Outstanding <strong className="text-[#b9540f]">{naira(f.outstanding)}</strong></span></div>

@@ -1,7 +1,7 @@
 import { randomInt } from "node:crypto";
 import { STUDENT_PASSWORD_LENGTH } from "./config";
 
-// Unambiguous alphabet — excludes 0/O, 1/l/I so a password is easy to read aloud and transcribe.
+// Unambiguous alphabet - excludes 0/O, 1/l/I so a password is easy to read aloud and transcribe.
 const LOWER = "abcdefghijkmnpqrstuvwxyz"; // no l, o
 const UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ"; // no I, O
 const DIGIT = "23456789"; // no 0, 1

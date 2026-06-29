@@ -48,7 +48,7 @@ export const auth = betterAuth({
       maxUsernameLength: 64,
       usernameValidator: (value: string) => /^[a-z0-9:_.-]+$/.test(value),
     }),
-    // 6-digit email OTP — used to verify an admin's email during signup.
+    // 6-digit email OTP - used to verify an admin's email during signup.
     emailOTP({
       otpLength: 6,
       expiresIn: 60 * 10, // 10 minutes

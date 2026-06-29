@@ -150,8 +150,8 @@ export async function getTeacherAttendanceReport(from: string, to: string): Prom
     }
     rows.push({
       date: day, name: s.name, role: ROLE_LABEL[s.role] ?? s.role,
-      timeIn: ins[0] ? fmt(new Date(ins[0].ts)) : "—", timeOut: outs.length ? fmt(new Date(outs[outs.length - 1].ts)) : "—",
-      method: ins[0] ? ({ qr_scan: "QR", kiosk_pin: "PIN", self_portal: "Portal", admin_override: "Override" }[ins[0].method] ?? ins[0].method) : "—",
+      timeIn: ins[0] ? fmt(new Date(ins[0].ts)) : "-", timeOut: outs.length ? fmt(new Date(outs[outs.length - 1].ts)) : "-",
+      method: ins[0] ? ({ qr_scan: "QR", kiosk_pin: "PIN", self_portal: "Portal", admin_override: "Override" }[ins[0].method] ?? ins[0].method) : "-",
       status,
       snapshot: ls.find((l) => l.snapshot)?.snapshot ?? null, // selfie may be on the clock-out log
     });
