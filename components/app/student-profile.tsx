@@ -81,7 +81,7 @@ export function StudentProfilePage({ studentId, onBack, onChanged }: { studentId
         <div className="grid gap-5 xl:grid-cols-[1.55fr_1fr]">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
             <div className="relative mx-auto shrink-0 sm:mx-0">
-              <span className="grid size-24 place-items-center overflow-hidden rounded-2xl text-[28px] font-extrabold text-white" style={{ backgroundColor: AV[data.name.length % AV.length] }}>{data.photoKey ? <img src={data.photoKey} alt="" className="size-full object-cover" /> : initials(data.name)}</span>
+              <span className="grid size-24 place-items-center overflow-hidden rounded-full text-[28px] font-extrabold text-white" style={{ backgroundColor: AV[data.name.length % AV.length] }}>{data.photoKey ? <img src={data.photoKey} alt="" className="size-full object-cover" /> : initials(data.name)}</span>
               {data.canManage && <><button onClick={() => fileRef.current?.click()} className="absolute -bottom-1.5 -right-1.5 grid size-8 place-items-center rounded-full border-2 border-white bg-brand-blue text-white shadow" title="Change photo">📷</button><input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const fl = e.target.files?.[0]; if (fl) onPhoto(fl); }} /></>}
             </div>
             <div className="min-w-0 flex-1 text-center sm:text-left">

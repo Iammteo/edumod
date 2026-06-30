@@ -26,7 +26,7 @@ export function InviteWizard({ onClose, onDone }: { onClose: () => void; onDone:
   const [issuedStaffId, setIssuedStaffId] = useState<string>("");
   const CLASSES = useClassNames();
   const [f, setF] = useState({
-    name: "", email: "", employmentType: "Full-time", role: "teacher" as RoleKey, startDate: "", staffId: "",
+    name: "", email: "", employmentType: "Full-time", role: "teacher" as RoleKey, startDate: "",
     isTeacher: true, isClassTeacher: false, assignedClass: "", subjects: [] as string[], teachingClasses: [] as string[],
     canApprovePayments: false,
   });
@@ -48,13 +48,13 @@ export function InviteWizard({ onClose, onDone }: { onClose: () => void; onDone:
 
   async function send() {
     setPhase("sending"); setErr(null);
-    const r = await inviteStaff({ name: f.name, email: f.email, employmentType: f.employmentType, role: f.role as StaffRole, startDate: f.startDate || undefined, staffId: f.staffId || undefined, isTeacher: f.isTeacher, isClassTeacher: f.isClassTeacher, assignedClass: f.assignedClass || undefined, subjects: f.subjects, teachingClasses: f.teachingClasses, canApprovePayments: f.canApprovePayments, permissions: perm });
+    const r = await inviteStaff({ name: f.name, email: f.email, employmentType: f.employmentType, role: f.role as StaffRole, startDate: f.startDate || undefined, isTeacher: f.isTeacher, isClassTeacher: f.isClassTeacher, assignedClass: f.assignedClass || undefined, subjects: f.subjects, teachingClasses: f.teachingClasses, canApprovePayments: f.canApprovePayments, permissions: perm });
     if ("error" in r) { setErr(r.error); setPhase("error"); return; }
     setIssuedStaffId(r.staffId);
     setPhase("done");
   }
 
-  if (phase === "done") return <Result icon="✓" tone="green" title="Invitation sent successfully" body={`${f.name || "Your staff member"} will receive an email to set a password and complete their profile. They can sign in with the Staff ID below or their email.`} highlight={issuedStaffId ? { label: "Staff ID", value: issuedStaffId } : undefined} primary={["Invite another", () => { setF({ ...f, name: "", email: "", staffId: "" }); setStep(0); setPhase("form"); }]} secondary={["View staff", onDone]} />;
+  if (phase === "done") return <Result icon="✓" tone="green" title="Invitation sent successfully" body={`${f.name || "Your staff member"} will receive an email to set a password and complete their profile. They can sign in with the Staff ID below or their email.`} highlight={issuedStaffId ? { label: "Staff ID", value: issuedStaffId } : undefined} primary={["Invite another", () => { setF({ ...f, name: "", email: "" }); setStep(0); setPhase("form"); }]} secondary={["View staff", onDone]} />;
   if (phase === "error") return <Result icon="!" tone="red" title="We couldn't send the invitation" body={err || "The email may be invalid or the connection was interrupted. Your details are saved."} primary={["Try again", send]} secondary={["Edit details", () => setPhase("form")]} />;
   if (phase === "sending") return <div className="grid place-items-center rounded-2xl border border-border-soft bg-white py-24 text-center"><div className="mb-4 text-4xl motion-safe:animate-[float_2s_ease-in-out_infinite]">✈️</div><h2 className="font-display text-[20px] font-semibold">Sending invitation…</h2><p className="mt-1 text-[13px] text-ink-soft">Preparing secure access for {f.name || "your staff member"}.</p></div>;
 
@@ -73,7 +73,7 @@ export function InviteWizard({ onClose, onDone }: { onClose: () => void; onDone:
           {step === 0 && <div className="grid gap-4">
             <div className="grid gap-4 sm:grid-cols-2"><label className="grid gap-1.5"><FieldLabel>Full name</FieldLabel><input className={inputCls} value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="Mrs. Grace Samuel" /></label><label className="grid gap-1.5"><FieldLabel>Work email</FieldLabel><input className={inputCls} type="email" value={f.email} onChange={(e) => set("email", e.target.value)} placeholder="grace@school.edu.ng" /></label></div>
             <div className="grid gap-4 sm:grid-cols-2"><label className="grid gap-1.5"><FieldLabel>Employment type</FieldLabel><select className={inputCls} value={f.employmentType} onChange={(e) => set("employmentType", e.target.value)}>{EMPLOYMENT.map((x) => <option key={x}>{x}</option>)}</select></label><label className="grid gap-1.5"><FieldLabel>Job role</FieldLabel><select className={inputCls} value={f.role} onChange={(e) => set("role", e.target.value as RoleKey)}>{ROLES.filter((r) => r.key !== "school_admin").map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}</select></label></div>
-            <div className="grid gap-4 sm:grid-cols-2"><label className="grid gap-1.5"><FieldLabel>Start date</FieldLabel><input className={inputCls} type="date" value={f.startDate} onChange={(e) => set("startDate", e.target.value)} /></label><label className="grid gap-1.5"><FieldLabel>Staff ID (optional)</FieldLabel><input className={inputCls} value={f.staffId} onChange={(e) => set("staffId", e.target.value)} placeholder="STF-001" /></label></div>
+            <label className="grid gap-1.5"><FieldLabel>Start date</FieldLabel><input className={inputCls} type="date" value={f.startDate} onChange={(e) => set("startDate", e.target.value)} /></label>
           </div>}
 
           {step === 1 && academic && <div className="grid gap-5">

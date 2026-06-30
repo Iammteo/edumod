@@ -19,6 +19,7 @@ const STUDENTS_SUB: [StudentsSection, string][] = [["classes", "🏫 Manage clas
 import { StudentProfilePage } from "./student-profile";
 import { EmptyArt } from "./illustration";
 import { CalendarCard } from "./calendar";
+import { GreetingBanner } from "./greeting-banner";
 import { StudentCredentials } from "./credentials";
 import { ClassManager } from "./class-manager";
 import { StaffClockInView } from "./attendance-view";
@@ -274,16 +275,7 @@ function NotifBell({ open, setOpen, audit, onViewAll, onNavigate }: { open: bool
 /* ---------- Overview ---------- */
 const naira = (n: number) => `₦${n.toLocaleString()}`;
 const compactN = (n: number) => (n >= 1_000_000 ? `₦${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M` : n >= 1000 ? `₦${(n / 1000).toFixed(0)}k` : `₦${n}`);
-// Time-aware welcome banner. Uses the school's day / night illustrations (public/banner/*) as the
-// background, switching by the viewer's local time: morning & afternoon -> day, evening -> night.
-// Falls back to a tinted gradient if the image file isn't present yet.
-const BANNER_SCENES = {
-  day: { img: "/banner/day.png", base: "linear-gradient(120deg,#2159e8,#6f9bf2)", scrim: "linear-gradient(90deg,rgba(13,47,117,.72),rgba(13,47,117,.30) 45%,rgba(13,47,117,0) 72%)" },
-  night: { img: "/banner/night.png", base: "linear-gradient(120deg,#2a2766,#4a3f8c)", scrim: "linear-gradient(90deg,rgba(20,18,64,.85),rgba(20,18,64,.45) 45%,rgba(20,18,64,0) 72%)" },
-};
 function WelcomeBanner({ userName, school, onSchoolChange }: { userName: string; school: School; onSchoolChange: (patch: Partial<School>) => void }) {
-  const [hour, setHour] = useState<number | null>(null);
-  const [imgOk, setImgOk] = useState(true);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [list, setList] = useState<SessionTerm[] | null>(null);
@@ -291,13 +283,8 @@ function WelcomeBanner({ userName, school, onSchoolChange }: { userName: string;
   const [newSession, setNewSession] = useState(school.currentSession);
   const [newTerm, setNewTerm] = useState("");
   const [err, setErr] = useState<string | null>(null);
-  useEffect(() => { const set = () => setHour(new Date().getHours()); set(); const t = setInterval(set, 60_000); return () => clearInterval(t); }, []);
   const reload = () => listAcademicTerms().then(setList);
   useEffect(() => { reload(); }, []);
-  const h = hour ?? 9; // stable default for SSR / first paint (morning), corrected on mount
-  const isNight = h >= 17 || h < 5;
-  const word = h >= 5 && h < 12 ? "Good morning" : h >= 12 && h < 17 ? "Good afternoon" : "Good evening";
-  const scene = isNight ? BANNER_SCENES.night : BANNER_SCENES.day;
 
   const groups = useMemo(() => {
     const m = new Map<string, SessionTerm[]>();
@@ -328,16 +315,10 @@ function WelcomeBanner({ userName, school, onSchoolChange }: { userName: string;
   }
 
   return (
-    <div className="relative mb-[18px] min-h-[200px] rounded-3xl sm:min-h-[230px]" style={{ background: scene.base }}>
-      {/* Background layer is clipped to the rounded corners; the content layer is NOT, so the dropdown can overflow the banner. */}
-      <div className="absolute inset-0 overflow-hidden rounded-3xl">
-        {imgOk && <img key={scene.img} src={scene.img} alt="" aria-hidden onError={() => setImgOk(false)} className="absolute inset-0 size-full object-cover object-right" />}
-        <div className="absolute inset-0" style={{ background: scene.scrim }} />
-      </div>
-      <div className="relative p-6 sm:p-8">
-        <h1 className="font-display text-[clamp(26px,5.4vw,40px)] font-extrabold leading-[1.06] tracking-[-.02em] text-white [text-shadow:0_2px_12px_rgba(0,0,0,.25)]">{word}, {userName.split(" ")[0]} {isNight ? "🌙" : "☀️"}</h1>
-        <p className="mt-2.5 max-w-[62%] text-[14px] leading-relaxed text-white/90 [text-shadow:0_1px_8px_rgba(0,0,0,.25)]">{school.currentTerm} · {school.currentSession} session · here&rsquo;s what&rsquo;s happening today.</p>
-        <div className="relative mt-4 inline-block">
+    <GreetingBanner
+      userName={userName}
+      subtitle={`${school.currentTerm} · ${school.currentSession} session · here’s what’s happening today.`}
+      control={(<>
           <button onClick={() => setOpen((v) => !v)} disabled={saving} aria-haspopup="listbox" aria-expanded={open} className="inline-flex items-center gap-2 rounded-[12px] bg-white/95 px-3.5 py-2.5 text-[13px] font-bold text-ink shadow-[0_4px_14px_rgba(16,33,63,.18)] transition hover:bg-white disabled:opacity-70"><span className="text-brand-blue">{I(<><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></>)}</span>{school.currentSession} · {school.currentTerm}{saving ? <span className="inline-block size-3.5 animate-spin rounded-full border-2 border-ink-soft/30 border-t-ink-soft" /> : <span className={`transition ${open ? "rotate-180" : ""}`}>{I(<path d="m6 9 6 6 6-6" />)}</span>}</button>
           {open && <><div className="fixed inset-0 z-40" onClick={() => { setOpen(false); setAdding(false); }} /><div className="absolute left-0 top-[calc(100%+6px)] z-50 max-h-[60vh] w-64 overflow-y-auto rounded-xl border border-border-soft bg-white p-1.5 text-ink shadow-[0_20px_50px_rgba(16,33,63,.2)] motion-safe:animate-[fade-up_.2s_ease]">
             <p className="px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">Switch session &amp; term</p>
@@ -366,9 +347,8 @@ function WelcomeBanner({ userName, school, onSchoolChange }: { userName: string;
             </div>
             {err && <p className="px-2 py-1 text-[11px] font-bold text-danger">{err}</p>}
           </div></>}
-        </div>
-      </div>
-    </div>
+      </>)}
+    />
   );
 }
 

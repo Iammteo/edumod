@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { getMyAttendance, selfClockIn, handleQrClockIn, setClockInPin, type MyAttendance } from "@/lib/actions/attendance";
+import { getMyAttendance, handleQrClockIn, setClockInPin, type MyAttendance } from "@/lib/actions/attendance";
 import { saveStudentResult } from "@/lib/actions/students";
 import { Button } from "./ui";
 import { QrScanModal } from "./qr-scanner";
@@ -24,7 +24,6 @@ export function MyAttendanceCard() {
   useEffect(() => { load(); }, [load]);
 
   function flash(m: string) { setOk(m); setErr(null); setTimeout(() => setOk((v) => (v === m ? null : v)), 3000); }
-  async function clock() { setBusy(true); setErr(null); const r = await selfClockIn(); setBusy(false); if ("error" in r) setErr(r.error); else { flash(`${r.direction === "clock_in" ? "Clocked in" : "Clocked out"} at ${r.at}`); load(); } }
   async function onScanned(token: string) {
     setScanning(false); setBusy(true); setErr(null);
     const r = await handleQrClockIn({ token });
@@ -42,7 +41,7 @@ export function MyAttendanceCard() {
           <div><div className="text-[11px] font-bold text-ink-soft">Status today</div><div className={`font-display text-[18px] font-bold ${inNow ? "text-brand-green" : "text-ink"}`}>{data.status === "none" ? "Not clocked in" : inNow ? "Clocked in" : "Clocked out"}</div>{data.lastAt && <div className="text-[10px] text-ink-soft">last at {data.lastAt}</div>}</div>
         </div>
         <button onClick={() => setScanning(true)} disabled={busy} className="mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-[12px] bg-brand-blue text-[14px] font-extrabold text-white transition hover:bg-brand-dark disabled:opacity-60">📷 Scan QR to {inNow ? "clock out" : "clock in"}</button>
-        <Button variant="secondary" size="sm" onClick={clock} disabled={busy} className="mt-2 w-full">{busy ? "Working…" : `No terminal nearby? ${inNow ? "Clock out" : "Clock in"} here`}</Button>
+        <p className="mt-2 text-[11px] text-ink-soft">Clock-in is verified by scanning the live QR code on the staff terminal.</p>
       </div>
       {ok && <p className="text-[12px] font-bold text-brand-green">{ok} ✓</p>}
       {err && <p className="text-[12px] font-bold text-danger">{err}</p>}
@@ -52,7 +51,7 @@ export function MyAttendanceCard() {
         <button onClick={() => setShowPin((v) => !v)} className="text-[11px] font-extrabold text-brand-blue hover:underline">{data.pinSet ? "Change kiosk PIN" : "Set kiosk PIN"}</button>
       </div>
       {showPin && <PinSetup mySet={data.pinSet} onDone={() => { setShowPin(false); load(); }} />}
-      {data.history.length === 0 ? <p className="text-[12px] text-ink-soft">No clock-ins yet. Tap “Clock in”, or scan the terminal QR.</p> : (
+      {data.history.length === 0 ? <p className="text-[12px] text-ink-soft">No clock-ins yet. Scan the terminal QR code to clock in.</p> : (
         <ul className="grid gap-1.5">{data.history.map((h, i) => <li key={i} className="flex items-center justify-between rounded-lg border border-border-soft px-3 py-1.5 text-[11px]"><span className={`font-extrabold ${h.direction === "clock_in" ? "text-brand-green" : "text-warn"}`}>{h.direction === "clock_in" ? "In" : "Out"}</span><span className="text-ink-soft">{h.date} · {h.time}</span><span className="rounded bg-paper px-1.5 py-0.5 text-[10px] font-bold text-ink-soft">{METHOD[h.method] ?? h.method}</span></li>)}</ul>
       )}
     </div>

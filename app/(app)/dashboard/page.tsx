@@ -70,7 +70,7 @@ export default async function DashboardPage() {
     const roster = sp?.assignedClass && membership
       ? await db.select({ id: studentsTable.id, firstName: studentsTable.firstName, lastName: studentsTable.lastName, admissionNo: studentsTable.admissionNo }).from(studentsTable).where(and(eq(studentsTable.schoolId, membership.schoolId), eq(studentsTable.className, sp.assignedClass))).orderBy(studentsTable.firstName).limit(100)
       : [];
-    return <StaffDashboard userName={name} schoolName={schoolName} schoolCode={schoolCode} term={termLabel} image={(session.user as { image?: string | null }).image ?? null} subjects={(sp?.subjects as string[]) ?? []} assignedClass={sp?.assignedClass ?? null} isClassTeacher={!!sp?.isClassTeacher} canAddStudents={membership?.role === "teacher" || membership?.role === "school_admin"} classStudents={roster.map((s) => ({ id: s.id, name: `${s.firstName} ${s.lastName}`.trim(), admissionNo: s.admissionNo }))} />;
+    return <StaffDashboard userName={name} schoolName={schoolName} schoolCode={schoolCode} term={termLabel} currentSession={school?.currentSession ?? "2023/2024"} currentTerm={school?.currentTerm ?? "Term 2"} image={(session.user as { image?: string | null }).image ?? null} subjects={(sp?.subjects as string[]) ?? []} assignedClass={sp?.assignedClass ?? null} isClassTeacher={!!sp?.isClassTeacher} canAddStudents={membership?.role === "teacher" || membership?.role === "school_admin"} classStudents={roster.map((s) => ({ id: s.id, name: `${s.firstName} ${s.lastName}`.trim(), admissionNo: s.admissionNo }))} />;
   }
   const overview = await studentOverview(session.user.id);
   return <StudentDashboard userName={name} schoolName={schoolName} schoolCode={schoolCode} term={termLabel} overview={overview} />;
