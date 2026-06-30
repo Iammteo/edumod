@@ -3,12 +3,11 @@
 import { randomUUID } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
-import { headers } from "next/headers";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { feeStructures, invoices, memberships, payments, schools, students, users } from "@/db/schema";
+import { getAuthContext } from "@/lib/auth/context";
+import { feeStructures, invoices, payments, schools, students, users } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
 import { sendEmail } from "@/lib/email";
 import { billStatus, loadInvoiceBillsByFilter, EXPORT_CAP } from "@/lib/invoice";
@@ -25,13 +24,11 @@ const FINANCE_ROLES = ["school_admin", "secretary", "principal", "vice_principal
 const MAX_AMOUNT = 100_000_000;
 
 async function ctx() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) return null;
-  const [m] = await db.select().from(memberships).where(eq(memberships.userId, session.user.id)).limit(1);
-  if (!m) return null;
-  const [school] = await db.select({ requireApproval: schools.requireApproval }).from(schools).where(eq(schools.id, m.schoolId)).limit(1);
+  const a = await getAuthContext();
+  if (!a) return null;
+  const [school] = await db.select({ requireApproval: schools.requireApproval }).from(schools).where(eq(schools.id, a.schoolId)).limit(1);
   // The secretary records/issues finance but can never approve it (separation of duties).
-  return { userId: session.user.id, schoolId: m.schoolId, role: m.role, canRecord: FINANCE_ROLES.includes(m.role), canApprove: m.role !== "secretary" && (m.role === "school_admin" || m.canApprovePayments), requireApproval: !!school?.requireApproval };
+  return { userId: a.userId, schoolId: a.schoolId, role: a.role, canRecord: FINANCE_ROLES.includes(a.role), canApprove: a.role !== "secretary" && (a.role === "school_admin" || a.canApprovePayments), requireApproval: !!school?.requireApproval };
 }
 
 export type Payment = { id: string; student: string; studentId: string; admissionNo: string; className: string | null; amount: number; method: string; status: string; recordedBy: string; approver: string | null; mine: boolean; date: string; recordedAt: string; description: string | null; invoiceId: string | null; proofKey: string | null; receiptKey: string | null };

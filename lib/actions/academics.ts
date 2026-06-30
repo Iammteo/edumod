@@ -1,18 +1,15 @@
 "use server";
 
-import { headers } from "next/headers";
 import { and, eq } from "drizzle-orm";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { academicTerms, memberships, schools } from "@/db/schema";
+import { getAuthContext } from "@/lib/auth/context";
+import { academicTerms, schools } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
 
 async function ctx() {
-  const s = await auth.api.getSession({ headers: await headers() });
-  if (!s) return null;
-  const [m] = await db.select().from(memberships).where(eq(memberships.userId, s.user.id)).limit(1);
-  if (!m) return null;
-  return { userId: s.user.id, schoolId: m.schoolId, isAdmin: ["school_admin", "principal", "vice_principal", "secretary"].includes(m.role) };
+  const a = await getAuthContext();
+  if (!a) return null;
+  return { userId: a.userId, schoolId: a.schoolId, isAdmin: ["school_admin", "principal", "vice_principal", "secretary"].includes(a.role) };
 }
 
 export type SessionTerm = { session: string; term: string; current: boolean };

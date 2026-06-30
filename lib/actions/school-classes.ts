@@ -1,19 +1,16 @@
 "use server";
 
-import { headers } from "next/headers";
 import { and, eq, sql } from "drizzle-orm";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { classes, memberships, students, staffProfiles, studentAttendance, feeStructures } from "@/db/schema";
+import { getAuthContext } from "@/lib/auth/context";
+import { classes, students, staffProfiles, studentAttendance, feeStructures } from "@/db/schema";
 import { SCHOOL_CLASSES } from "@/lib/classes";
 import { logAudit } from "@/lib/audit";
 
 async function ctx() {
-  const s = await auth.api.getSession({ headers: await headers() });
-  if (!s) return null;
-  const [m] = await db.select().from(memberships).where(eq(memberships.userId, s.user.id)).limit(1);
-  if (!m) return null;
-  return { userId: s.user.id, schoolId: m.schoolId, role: m.role, isAdmin: ["school_admin", "principal", "vice_principal", "secretary"].includes(m.role) };
+  const a = await getAuthContext();
+  if (!a) return null;
+  return { userId: a.userId, schoolId: a.schoolId, role: a.role, isAdmin: ["school_admin", "principal", "vice_principal", "secretary"].includes(a.role) };
 }
 
 function inferLevel(name: string): string | null {

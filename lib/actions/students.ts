@@ -2,11 +2,10 @@
 
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
-import { headers } from "next/headers";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { accounts, invoices, memberships, payments, schools, students, studentResults, refundRequests, users } from "@/db/schema";
+import { getAuthContext } from "@/lib/auth/context";
+import { accounts, invoices, payments, schools, students, studentResults, refundRequests, users } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
 import { gradeFor } from "@/lib/grading";
 import { generateStudentPassword } from "@/lib/identity/password";
@@ -16,16 +15,14 @@ import { sniffImage } from "@/lib/image-upload";
 import { computeStudentFinance } from "@/lib/finance-calc";
 
 async function ctx() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) return null;
-  const [m] = await db.select().from(memberships).where(eq(memberships.userId, session.user.id)).limit(1);
-  if (!m) return null;
-  const canManage = m.role === "school_admin" || m.role === "teacher" || m.role === "principal" || m.role === "vice_principal" || m.role === "secretary";
-  const canApprove = m.role === "school_admin" || m.canApprovePayments;
+  const a = await getAuthContext();
+  if (!a) return null;
+  const canManage = a.role === "school_admin" || a.role === "teacher" || a.role === "principal" || a.role === "vice_principal" || a.role === "secretary";
+  const canApprove = a.role === "school_admin" || a.canApprovePayments;
   // Students/parents must never reach staff readers; only leadership may bulk-recover login secrets.
-  const isStaff = ["school_admin", "principal", "vice_principal", "secretary", "teacher"].includes(m.role);
-  const canViewSecrets = ["school_admin", "principal", "vice_principal"].includes(m.role);
-  return { userId: session.user.id, schoolId: m.schoolId, role: m.role, canManage, canApprove, isStaff, canViewSecrets };
+  const isStaff = ["school_admin", "principal", "vice_principal", "secretary", "teacher"].includes(a.role);
+  const canViewSecrets = ["school_admin", "principal", "vice_principal"].includes(a.role);
+  return { userId: a.userId, schoolId: a.schoolId, role: a.role, canManage, canApprove, isStaff, canViewSecrets };
 }
 
 export type Guardian = { name: string; relationship: string; phone: string; email: string; occupation: string; address: string };

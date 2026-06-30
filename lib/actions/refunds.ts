@@ -1,10 +1,9 @@
 "use server";
 
-import { headers } from "next/headers";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { invoices, memberships, payments, refundRequests, schools, students, users } from "@/db/schema";
+import { getAuthContext } from "@/lib/auth/context";
+import { invoices, payments, refundRequests, schools, students, users } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
 
 // Distinguishes a business-rule rejection (shown to the user) from an unexpected DB error inside the
@@ -13,13 +12,11 @@ class RefundError extends Error {}
 const MAX_AMOUNT = 100_000_000;
 
 async function ctx() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) return null;
-  const [m] = await db.select().from(memberships).where(eq(memberships.userId, session.user.id)).limit(1);
-  if (!m) return null;
-  const [school] = await db.select({ requireApproval: schools.requireApproval }).from(schools).where(eq(schools.id, m.schoolId)).limit(1);
+  const a = await getAuthContext();
+  if (!a) return null;
+  const [school] = await db.select({ requireApproval: schools.requireApproval }).from(schools).where(eq(schools.id, a.schoolId)).limit(1);
   // Secretary can manage/request refunds but never approve them (separation of duties).
-  return { userId: session.user.id, schoolId: m.schoolId, role: m.role, canManage: m.role === "school_admin" || m.role === "secretary", canApprove: m.role !== "secretary" && (m.role === "school_admin" || m.canApprovePayments), requireApproval: !!school?.requireApproval };
+  return { userId: a.userId, schoolId: a.schoolId, role: a.role, canManage: a.role === "school_admin" || a.role === "secretary", canApprove: a.role !== "secretary" && (a.role === "school_admin" || a.canApprovePayments), requireApproval: !!school?.requireApproval };
 }
 
 // Credit = approved payments − amount billed − refunds already approved. Positive means overpaid.

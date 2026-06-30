@@ -1,19 +1,16 @@
 "use server";
 
-import { headers } from "next/headers";
 import { and, asc, eq, gte } from "drizzle-orm";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { memberships, schoolEvents } from "@/db/schema";
+import { getAuthContext } from "@/lib/auth/context";
+import { schoolEvents } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
 
 async function ctx() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) return null;
-  const [m] = await db.select().from(memberships).where(eq(memberships.userId, session.user.id)).limit(1);
-  if (!m) return null;
-  const canManage = ["school_admin", "principal", "vice_principal", "secretary", "teacher"].includes(m.role);
-  return { userId: session.user.id, schoolId: m.schoolId, role: m.role, canManage };
+  const a = await getAuthContext();
+  if (!a) return null;
+  const canManage = ["school_admin", "principal", "vice_principal", "secretary", "teacher"].includes(a.role);
+  return { userId: a.userId, schoolId: a.schoolId, role: a.role, canManage };
 }
 
 export type SchoolEvent = { id: string; date: string; title: string; kind: string };
