@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Logo } from "@/components/marketing/brand";
-import { getInvite, acceptInvite, uploadStaffPhoto, type Invite } from "@/lib/actions/onboarding";
+import { getInvite, acceptInvite, sendInviteOtp, uploadStaffPhoto, type Invite } from "@/lib/actions/onboarding";
 
 const STEPS = ["Accept invitation", "Set password", "Personal information", "Upload photo", "Ready"];
 const inputCls = "min-h-11 w-full rounded-[12px] border border-border-soft bg-white px-3.5 text-[14px] text-ink outline-none transition focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/20";
@@ -17,6 +17,7 @@ export function Onboarding({ token }: { token: string }) {
   const [pw, setPw] = useState(""); const [confirm, setConfirm] = useState(""); const [show, setShow] = useState(false);
   const [p, setP] = useState({ phone: "", address: "", dob: "", emergencyName: "", emergencyRelationship: "", emergencyPhone: "" });
   const [photo, setPhoto] = useState<string | null>(null);
+  const [otp, setOtp] = useState(""); const [otpSent, setOtpSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,9 +26,16 @@ export function Onboarding({ token }: { token: string }) {
   if (invite === "loading") return <Shell><div className="grid place-items-center py-20 text-[13px] text-ink-soft">Loading your invitation…</div></Shell>;
   if (!invite) return <Shell><div className="grid place-items-center py-16 text-center"><div className="mb-3 grid size-14 place-items-center rounded-full bg-danger-soft text-2xl text-danger">!</div><h1 className="font-display text-2xl font-semibold">Invitation not found</h1><p className="mt-2 max-w-sm text-[13px] text-ink-soft">This invitation link is invalid or has already been used. Please ask your school admin to re-send it.</p></div></Shell>;
 
+  async function sendCode() {
+    setBusy(true); setError(null);
+    const r = await sendInviteOtp(token);
+    setBusy(false);
+    if ("error" in r) { setError(r.error); return; }
+    setOtpSent(true);
+  }
   async function complete() {
     setBusy(true); setError(null);
-    const r = await acceptInvite(token, pw, p);
+    const r = await acceptInvite(token, pw, p, otp);
     setBusy(false);
     if ("error" in r) { setError(r.error); return; }
     setStep(4);
@@ -87,7 +95,16 @@ export function Onboarding({ token }: { token: string }) {
           <div className="grid gap-4 sm:grid-cols-2"><label className="grid gap-1.5"><span className="text-[12px] font-extrabold text-ink">Phone number</span><input className={inputCls} value={p.phone} onChange={(e) => setP({ ...p, phone: e.target.value })} placeholder="+234 803 456 7890" /></label><label className="grid gap-1.5"><span className="text-[12px] font-extrabold text-ink">Date of birth</span><input type="date" className={inputCls} value={p.dob} onChange={(e) => setP({ ...p, dob: e.target.value })} /></label></div>
           <label className="grid gap-1.5"><span className="text-[12px] font-extrabold text-ink">Residential address</span><input className={inputCls} value={p.address} onChange={(e) => setP({ ...p, address: e.target.value })} placeholder="12 Admiralty Way, Lekki, Lagos" /></label>
           <div><span className="text-[12px] font-extrabold text-ink">Emergency contact</span><div className="mt-1.5 grid gap-4 sm:grid-cols-3"><input className={inputCls} value={p.emergencyName} onChange={(e) => setP({ ...p, emergencyName: e.target.value })} placeholder="Contact name" /><input className={inputCls} value={p.emergencyRelationship} onChange={(e) => setP({ ...p, emergencyRelationship: e.target.value })} placeholder="Relationship" /><input className={inputCls} value={p.emergencyPhone} onChange={(e) => setP({ ...p, emergencyPhone: e.target.value })} placeholder="Phone" /></div></div>
-          <div className="flex justify-between"><button onClick={() => setStep(2)} className="rounded-[10px] border border-border-soft px-4 py-2 text-[13px] font-extrabold text-ink-soft">← Back</button><button disabled={busy} onClick={complete} className="rounded-[10px] bg-brand-blue px-5 py-2 text-[13px] font-extrabold text-white transition hover:bg-brand-dark disabled:opacity-60">{busy ? "Saving…" : "Continue →"}</button></div>
+          {otpSent && <label className="grid gap-1.5 rounded-xl border border-border-soft bg-paper/50 p-3.5">
+            <span className="text-[12px] font-extrabold text-ink">Enter the 6-digit code we emailed to {invite.email}</span>
+            <input value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="••••••" className={`${inputCls} text-center tracking-[.4em]`} />
+            <button type="button" onClick={sendCode} disabled={busy} className="justify-self-start text-[11px] font-extrabold text-brand-blue hover:underline disabled:opacity-50">Resend code</button>
+          </label>}
+          <div className="flex justify-between"><button onClick={() => setStep(2)} className="rounded-[10px] border border-border-soft px-4 py-2 text-[13px] font-extrabold text-ink-soft">← Back</button>
+            {!otpSent
+              ? <button disabled={busy} onClick={sendCode} className="rounded-[10px] bg-brand-blue px-5 py-2 text-[13px] font-extrabold text-white transition hover:bg-brand-dark disabled:opacity-60">{busy ? "Sending…" : "Email me a code →"}</button>
+              : <button disabled={busy || otp.length !== 6} onClick={complete} className="rounded-[10px] bg-brand-blue px-5 py-2 text-[13px] font-extrabold text-white transition hover:bg-brand-dark disabled:opacity-50">{busy ? "Verifying…" : "Verify & finish →"}</button>}
+          </div>
         </div>}
 
         {step === 4 && <div className="mx-auto grid max-w-[420px] place-items-center gap-4 text-center">
