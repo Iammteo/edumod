@@ -10,22 +10,29 @@ type Toast = { ok: boolean; msg: string } | null;
 
 export default function KioskPage() {
   const [qr, setQr] = useState<string>("");
+  const [gateErr, setGateErr] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [modal, setModal] = useState(false);
 
-  // Rotate the QR every 5s from a fresh server-signed token.
+  // Rotate the QR every 5s from a fresh server-signed token. The terminal must be signed into the
+  // school (getQrToken returns an error otherwise) so codes can't be minted by anyone.
   const refresh = useCallback(async () => {
-    try { const { token } = await getQrToken(); setQr(await QRCode.toDataURL(`${location.origin}/clock-in?t=${encodeURIComponent(token)}`, { width: 460, margin: 1, color: { dark: "#0d2f75", light: "#ffffff" } })); } catch { /* keep last QR */ }
+    try {
+      const res = await getQrToken();
+      if ("error" in res) { setGateErr(res.error); setQr(""); return; }
+      setGateErr(null);
+      setQr(await QRCode.toDataURL(`${location.origin}/clock-in?t=${encodeURIComponent(res.token)}`, { width: 460, margin: 1, color: { dark: "#0d2f75", light: "#ffffff" } }));
+    } catch { /* keep last QR */ }
   }, []);
   useEffect(() => { refresh(); const a = setInterval(refresh, 5000); const b = setInterval(() => setNow(new Date()), 1000); return () => { clearInterval(a); clearInterval(b); }; }, [refresh]);
 
   return (
     <div className="grid min-h-screen place-items-center bg-[linear-gradient(135deg,#0d2f75,#143a99,#1b4fd0)] p-6 text-white">
       <div className="w-[min(560px,100%)] text-center">
-        <div className="mb-6"><div className="text-[13px] font-bold uppercase tracking-[.2em] text-blue-200">Staff attendance terminal</div><div className="font-display text-[40px] font-bold tabular-nums">{now.toLocaleTimeString()}</div><div className="text-[13px] text-blue-100">{now.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</div></div>
+        <div className="mb-6"><div className="text-[13px] font-bold uppercase tracking-[.2em] text-blue-200">Staff attendance terminal</div><div suppressHydrationWarning className="font-display text-[40px] font-bold tabular-nums">{now.toLocaleTimeString()}</div><div suppressHydrationWarning className="text-[13px] text-blue-100">{now.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</div></div>
 
         <div className="mx-auto grid place-items-center rounded-3xl bg-white p-6 shadow-2xl">
-          {qr ? <img src={qr} alt="Scan to clock in" className="size-[min(380px,72vw)]" /> : <div className="grid size-[min(380px,72vw)] place-items-center text-ink-soft"><Loader2 className="size-10 animate-spin" /></div>}
+          {qr ? <img src={qr} alt="Scan to clock in" className="size-[min(380px,72vw)]" /> : gateErr ? <div className="grid size-[min(380px,72vw)] place-items-center px-6 text-center text-[14px] font-bold text-ink-soft">{gateErr}</div> : <div className="grid size-[min(380px,72vw)] place-items-center text-ink-soft"><Loader2 className="size-10 animate-spin" /></div>}
         </div>
 
         <p className="mt-5 flex items-center justify-center gap-2 text-[15px] font-bold text-blue-50"><QrCode className="size-5" /> Scan with your phone to clock in / out</p>
@@ -108,7 +115,7 @@ function PinModal({ onClose }: { onClose: () => void }) {
           <input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="off" placeholder="••••••" className="min-h-12 rounded-xl border border-border-soft bg-paper/60 px-3 text-center text-[22px] font-bold tracking-[.4em] outline-none focus:border-brand-blue" />
         </label>
 
-        {toast && <p className={`mt-3 flex items-center gap-1.5 text-[13px] font-bold ${toast.ok ? "text-brand-green" : "text-[#b3261e]"}`}>{toast.ok ? <CheckCircle2 className="size-4" /> : <XCircle className="size-4" />}{toast.msg}</p>}
+        {toast && <p className={`mt-3 flex items-center gap-1.5 text-[13px] font-bold ${toast.ok ? "text-brand-green" : "text-danger"}`}>{toast.ok ? <CheckCircle2 className="size-4" /> : <XCircle className="size-4" />}{toast.msg}</p>}
 
         <button onClick={submit} disabled={busy} className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-blue text-[15px] font-extrabold text-white transition hover:bg-brand-dark disabled:opacity-70">
           {busy ? <><Loader2 className="size-5 animate-spin" /> Submitting…</> : <><Camera className="size-5" /> Capture & clock in</>}

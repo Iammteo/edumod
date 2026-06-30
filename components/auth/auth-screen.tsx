@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Logo } from "@/components/marketing/brand";
-import { authClient, signIn, signUp, type AccountType } from "@/lib/auth/client";
+import { authClient, signIn, signUp, twoFactor, type AccountType } from "@/lib/auth/client";
 import { registerOrganization, studentLogin, staffLogin } from "@/lib/actions/people";
 
 const ROLES: { key: AccountType; label: string; icon: React.ReactNode }[] = [
@@ -49,8 +49,9 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
   const [role, setRole] = useState<AccountType>("student");
   const [sending, setSending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Signup gains an email-OTP verification step before the org is created.
-  const [step, setStep] = useState<"form" | "otp">("form");
+  // Signup gains an email-OTP verification step; login gains a 2FA challenge step for enrolled users.
+  const [step, setStep] = useState<"form" | "otp" | "twofa">("form");
+  const [code, setCode] = useState("");
   const [pending, setPending] = useState<{ email: string; schoolName: string; state: string; country: string; address: string } | null>(null);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -69,7 +70,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
         if (su.error) {
           // The account may already exist from a half-finished signup. Sign in (with the same
           // password) and continue - registerOrganization is idempotent, so it completes the org.
-          const si = await signIn.email({ email, password });
+          const si = await signIn.email({ email, password, rememberMe: false });
           if (si.error) throw new Error("An account with this email already exists. Please log in instead.");
         }
         const sent = await authClient.emailOtp.sendVerificationOtp({ email, type: "email-verification" });
@@ -95,13 +96,15 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
           router.push("/dashboard");
           return;
         }
-        const res = await signIn.email({ email: identifier, password });
+        const res = await signIn.email({ email: identifier, password, rememberMe: false });
         if (res.error) throw new Error(res.error.message || "Invalid credentials");
+        if ((res.data as { twoFactorRedirect?: boolean } | null)?.twoFactorRedirect) { setStep("twofa"); setSending(null); return; }
         router.push("/dashboard");
         return;
       }
-      const res = await signIn.email({ email: String(fd.get("email") || ""), password });
+      const res = await signIn.email({ email: String(fd.get("email") || ""), password, rememberMe: false });
       if (res.error) throw new Error(res.error.message || "Invalid credentials");
+      if ((res.data as { twoFactorRedirect?: boolean } | null)?.twoFactorRedirect) { setStep("twofa"); setSending(null); return; }
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
@@ -124,6 +127,21 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not verify the code. Please try again.");
+      setSending(null);
+    }
+  }
+
+  // 2FA challenge: verify the authenticator code, completing the sign-in.
+  async function onTwoFactor(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    setSending("twofa");
+    try {
+      const r = await twoFactor.verifyTotp({ code });
+      if (r.error) throw new Error(r.error.message || "Invalid code. Check your authenticator app.");
+      router.push("/dashboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not verify the code.");
       setSending(null);
     }
   }
@@ -179,11 +197,25 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
         <Link href="/" className="absolute left-5 top-5 text-[12px] font-bold text-ink-soft transition hover:text-brand-blue sm:left-8 sm:top-8"><span aria-hidden>←</span> Back to home</Link>
         <div className="w-full max-w-[404px] motion-safe:animate-[fade-up_.6s_ease]">
           <div className="mb-7 lg:hidden"><Logo /></div>
-          {!isLogin && step === "otp" ? (
+          {isLogin && step === "twofa" ? (
+            <div>
+              <h1 className="font-display text-[30px] font-extrabold tracking-[-.03em]">Two-factor verification</h1>
+              <p className="mt-1.5 text-[14px] leading-relaxed text-ink-soft">Enter the 6-digit code from your authenticator app to finish signing in.</p>
+              {error && <div className="mt-5 rounded-[12px] border border-danger-line bg-danger-soft px-3.5 py-2.5 text-[12px] font-bold text-danger">{error}</div>}
+              <form onSubmit={onTwoFactor} className="mt-5 grid gap-3.5">
+                <label className="grid gap-1.5">
+                  <span className="text-[12px] font-extrabold text-ink">Authentication code</span>
+                  <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" maxLength={6} required placeholder="••••••" className="min-h-12 rounded-[12px] border border-border-soft bg-white px-3.5 text-center text-[20px] font-extrabold tracking-[0.4em] text-ink outline-none transition focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/20" />
+                </label>
+                <button type="submit" disabled={!!sending || code.length !== 6} className="mt-1 inline-flex min-h-12 items-center justify-center gap-2 rounded-[12px] bg-brand-blue px-5 text-[14px] font-extrabold text-white shadow-[0_8px_18px_rgba(33,89,232,.22)] transition hover:-translate-y-0.5 hover:bg-brand-dark disabled:opacity-70">{sending === "twofa" ? <Spinner light /> : "Verify & sign in"}</button>
+              </form>
+              <button type="button" onClick={() => { setStep("form"); setError(null); setCode(""); }} className="mt-4 text-[12px] font-bold text-ink-soft transition hover:text-brand-blue"><span aria-hidden>←</span> Back</button>
+            </div>
+          ) : !isLogin && step === "otp" ? (
             <div>
               <h1 className="font-display text-[30px] font-extrabold tracking-[-.03em]">Verify your email</h1>
               <p className="mt-1.5 text-[14px] leading-relaxed text-ink-soft">We sent a 6-digit code to <strong className="text-ink">{pending?.email}</strong>. Enter it to finish creating your school.</p>
-              {error && <div className="mt-5 rounded-[12px] border border-[#f3c2c2] bg-[#fdeeee] px-3.5 py-2.5 text-[12px] font-bold text-[#b3261e]">{error}</div>}
+              {error && <div className="mt-5 rounded-[12px] border border-danger-line bg-danger-soft px-3.5 py-2.5 text-[12px] font-bold text-danger">{error}</div>}
               <form onSubmit={onVerify} className="mt-5 grid gap-3.5">
                 <label className="grid gap-1.5">
                   <span className="text-[12px] font-extrabold text-ink">Verification code</span>
@@ -232,7 +264,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
             </>
           )}
 
-          {error && <div className={`${showSocial ? "" : "mt-6"} mb-4 rounded-[12px] border border-[#f3c2c2] bg-[#fdeeee] px-3.5 py-2.5 text-[12px] font-bold text-[#b3261e] motion-safe:animate-[fade-up_.3s_ease]`}>{error}</div>}
+          {error && <div className={`${showSocial ? "" : "mt-6"} mb-4 rounded-[12px] border border-danger-line bg-danger-soft px-3.5 py-2.5 text-[12px] font-bold text-danger motion-safe:animate-[fade-up_.3s_ease]`}>{error}</div>}
 
           <form onSubmit={onSubmit} className={`grid gap-3.5 ${showSocial ? "" : "mt-6"}`}>
             {!isLogin && <>

@@ -14,6 +14,8 @@ import { logAudit } from "@/lib/audit";
 import { composeUsername, normalizeIdentifier } from "@/lib/identity/student-id";
 import { generateStaffId } from "@/lib/identity/staff-id";
 import { isLockedOut, recordFailure, clearFailures } from "@/lib/rate-limit";
+import { getOrCreateDeviceId, evaluateStaffDevice } from "@/lib/device-trust";
+import { encryptSecret } from "@/lib/crypto";
 import { sendSchoolCodeEmail, sendEmail } from "@/lib/email";
 
 // Better Auth's password hasher (internal) - used so directly-inserted credential rows verify
@@ -104,12 +106,19 @@ export async function inviteStaff(input: InviteStaffInput): Promise<{ ok: true; 
   if (!ctx.school?.schoolCode) return { error: "Your organization has no school code set." };
   const email = input.email.trim();
   if (!input.name.trim() || !email) return { error: "Name and email are required." };
+  // Create the auth account first (this is what enforces unique email).
+  let userId: string | undefined;
   try {
     const res = await auth.api.signUpEmail({ body: { name: input.name.trim(), email, password: `${randomUUID()}Aa1!`, accountType: "staff" } as never });
-    const userId = (res as { user?: { id?: string } }).user?.id;
-    if (!userId) return { error: "Could not create the staff account." };
-    const inviteToken = randomUUID();
-    let staffId = "";
+    userId = (res as { user?: { id?: string } }).user?.id;
+  } catch {
+    return { error: "Could not invite this staff member - the email may already be in use." };
+  }
+  if (!userId) return { error: "Could not create the staff account." };
+  const inviteToken = randomUUID();
+  const inviteTokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // invite links expire after 7 days
+  let staffId = "";
+  try {
     await db.transaction(async (tx) => {
       // Allocate a globally-unique Staff ID, which becomes the Better Auth username so the staffer
       // can sign in with it (in addition to their email). Prefer an admin-supplied ID if it's free.
@@ -142,6 +151,7 @@ export async function inviteStaff(input: InviteStaffInput): Promise<{ ok: true; 
         teachingClasses: input.teachingClasses,
         permissions: input.permissions,
         inviteToken,
+        inviteTokenExpiresAt,
       });
     });
     const link = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/onboarding?invite=${inviteToken}`;
@@ -153,7 +163,10 @@ export async function inviteStaff(input: InviteStaffInput): Promise<{ ok: true; 
     await logAudit({ schoolId: ctx.schoolId, actorUserId: ctx.userId, action: "staff.invited", entityType: "Staff", entityId: userId, metadata: { name: input.name.trim(), role: input.role, staffId } });
     return { ok: true, staffId };
   } catch {
-    return { error: "Could not invite this staff member - the email may already be in use." };
+    // The auth account was created but profile/membership setup failed - delete it so the email
+    // isn't left orphaned (which would block re-inviting).
+    await db.delete(users).where(eq(users.id, userId)).catch(() => {});
+    return { error: "Could not complete the invite. Please try again." };
   }
 }
 
@@ -188,7 +201,7 @@ export async function createStudent(input: { name: string; className?: string })
       const usernameValue = composeUsername(ctx.school!.schoolCode!, no);
       await tx.insert(users).values({ id: userId, name, email: null, emailVerified: false, accountType: "student", username: usernameValue, displayUsername: usernameValue, createdAt: now, updatedAt: now });
       await tx.insert(accounts).values({ id: randomUUID(), accountId: userId, providerId: "credential", userId, password: hash, createdAt: now, updatedAt: now });
-      await tx.insert(students).values({ schoolId: ctx.schoolId!, admissionNo: no, firstName, lastName, className, userId });
+      await tx.insert(students).values({ schoolId: ctx.schoolId!, admissionNo: no, firstName, lastName, className, userId, credentialEnc: encryptSecret(password) });
       await tx.insert(memberships).values({ schoolId: ctx.schoolId!, userId, role: "student" });
       return no;
     });
@@ -210,6 +223,7 @@ export async function resetStudentPassword(input: { studentId: string }): Promis
   try {
     const hash = await hashPassword(password);
     await db.update(accounts).set({ password: hash, updatedAt: new Date() }).where(and(eq(accounts.userId, student.userId), eq(accounts.providerId, "credential")));
+    await db.update(students).set({ credentialEnc: encryptSecret(password), updatedAt: new Date() }).where(eq(students.id, student.id));
     await logAudit({ schoolId: ctx.schoolId, actorUserId: ctx.userId, action: "student.password_reset", entityType: "Student", entityId: student.userId, metadata: { name: `${student.firstName} ${student.lastName}`.trim() } });
     return { ok: true, studentName: `${student.firstName} ${student.lastName}`.trim(), password };
   } catch {
@@ -262,8 +276,8 @@ export async function studentLogin(input: { schoolCode: string; studentId: strin
   const keys = [`user:${usernameValue}`, `ip:${ip}`];
   if (await isLockedOut(keys)) return { error: "Too many attempts. Please wait a few minutes and try again." };
   try {
-    await (auth.api as unknown as { signInUsername(a: { body: { username: string; password: string }; headers: Headers }): Promise<unknown> })
-      .signInUsername({ body: { username: usernameValue, password: input.password }, headers: h as unknown as Headers });
+    await (auth.api as unknown as { signInUsername(a: { body: { username: string; password: string; rememberMe: boolean }; headers: Headers }): Promise<unknown> })
+      .signInUsername({ body: { username: usernameValue, password: input.password, rememberMe: false }, headers: h as unknown as Headers });
     await clearFailures(keys);
     return { ok: true };
   } catch {
@@ -280,9 +294,19 @@ export async function staffLogin(input: { staffId: string; password: string }): 
   const usernameValue = normalizeIdentifier(input.staffId);
   const keys = [`user:${usernameValue}`, `ip:${ip}`];
   if (await isLockedOut(keys)) return { error: "Too many attempts. Please wait a few minutes and try again." };
+  // Block disabled/departed staff before authenticating (offboarding gate).
+  const [prof] = await db.select({ userId: users.id, status: staffProfiles.status, role: memberships.role, schoolId: memberships.schoolId })
+    .from(users).leftJoin(staffProfiles, eq(staffProfiles.userId, users.id)).leftJoin(memberships, eq(memberships.userId, users.id))
+    .where(eq(users.username, usernameValue)).limit(1);
+  if (prof?.status === "left" || prof?.status === "inactive") return { error: "Your access has been disabled. Please contact your school admin." };
+  // Device trust (staff only; admins can sign in anywhere). New devices need admin approval.
+  if (prof?.userId) {
+    const dec = await evaluateStaffDevice(prof.userId, await getOrCreateDeviceId());
+    if (!dec.allow) return { error: dec.message ?? "This device needs admin approval before you can sign in." };
+  }
   try {
-    await (auth.api as unknown as { signInUsername(a: { body: { username: string; password: string }; headers: Headers }): Promise<unknown> })
-      .signInUsername({ body: { username: usernameValue, password: input.password }, headers: h as unknown as Headers });
+    await (auth.api as unknown as { signInUsername(a: { body: { username: string; password: string; rememberMe: boolean }; headers: Headers }): Promise<unknown> })
+      .signInUsername({ body: { username: usernameValue, password: input.password, rememberMe: false }, headers: h as unknown as Headers });
     await clearFailures(keys);
     return { ok: true };
   } catch {

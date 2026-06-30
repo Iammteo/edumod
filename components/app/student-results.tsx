@@ -5,7 +5,7 @@ import { saveStudentResult, deleteStudentResult, type TermResult } from "@/lib/a
 
 const SUBJECTS = ["Mathematics", "English Language", "Basic Science", "Basic Technology", "Social Studies", "Civic Education", "Agricultural Science", "Business Studies", "Computer Studies / ICT", "Christian Religious Studies", "Islamic Religious Studies", "Physical & Health Education", "Home Economics", "Cultural & Creative Arts", "French", "Physics", "Chemistry", "Biology", "Economics", "Government", "Literature-in-English", "Geography", "Further Mathematics", "Financial Accounting", "Commerce", "Yoruba", "Hausa", "Igbo"];
 const TERMS = ["2023/2024 · Term 1", "2023/2024 · Term 2", "2023/2024 · Term 3", "2024/2025 · Term 1"];
-const gradeTone = (g: string) => (g === "A" ? "text-brand-green" : g === "F" ? "text-[#b3261e]" : g === "D" || g === "E" ? "text-[#b9540f]" : "text-brand-blue");
+const gradeTone = (g: string) => (g === "A" ? "text-brand-green" : g === "F" ? "text-danger" : g === "D" || g === "E" ? "text-warn" : "text-brand-blue");
 function ord(n: number) { const s = ["th", "st", "nd", "rd"], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
 const inputCls = "min-h-9 w-full rounded-[9px] border border-border-soft bg-paper/60 px-2.5 text-[12px] text-ink outline-none transition focus:border-brand-blue focus:bg-white";
 
@@ -14,7 +14,7 @@ export function StudentResults({ studentId, academics, canManage, onChanged }: {
   const [err, setErr] = useState<string | null>(null);
   return (
     <div className="grid gap-4">
-      {err && <div className="rounded-[10px] border border-[#f3c2c2] bg-[#fdeeee] px-3 py-2 text-[12px] font-bold text-[#b3261e]">{err}</div>}
+      {err && <div className="rounded-[10px] border border-danger-line bg-danger-soft px-3 py-2 text-[12px] font-bold text-danger">{err}</div>}
       {canManage && <div className="flex justify-end"><button onClick={() => setAdding((v) => !v)} className="inline-flex items-center gap-1.5 rounded-[9px] border border-border-soft bg-white px-3 py-1.5 text-[12px] font-extrabold text-brand-blue transition hover:bg-brand-soft">{adding ? "✕ Close" : "＋ Record result"}</button></div>}
       {adding && <ResultForm studentId={studentId} onSaved={onChanged} onErr={setErr} />}
       {academics.length === 0 ? <div className="grid place-items-center rounded-2xl border border-dashed border-border-soft bg-white py-12 text-center text-[12px] text-ink-soft">No results recorded yet.{canManage ? " Use “Record result” to add scores." : ""}</div>
@@ -34,7 +34,7 @@ function TermSheet({ t, canManage, studentId, onChanged }: { t: TermResult; canM
           <tbody>{t.subjects.map((s) => (
             <tr key={s.subject} className="border-b border-border-soft last:border-0">
               <td className="py-2 font-bold text-ink">{s.subject}</td><td className="py-2 text-center text-ink-soft">{s.ca}</td><td className="py-2 text-center text-ink-soft">{s.exam}</td><td className="py-2 text-center font-extrabold text-ink">{s.total}</td><td className={`py-2 text-center font-extrabold ${gradeTone(s.grade)}`}>{s.grade}</td>
-              {canManage && <td className="py-2 text-right"><button onClick={() => remove(s.subject)} className="text-ink-soft hover:text-[#b3261e]">✕</button></td>}
+              {canManage && <td className="py-2 text-right"><button onClick={() => remove(s.subject)} className="text-ink-soft hover:text-danger">✕</button></td>}
             </tr>))}</tbody>
         </table>
       </div>

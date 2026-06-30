@@ -11,6 +11,7 @@ import { logAudit } from "@/lib/audit";
 import { gradeFor } from "@/lib/grading";
 import { generateStudentPassword } from "@/lib/identity/password";
 import { hashPassword } from "./people";
+import { encryptSecret, decryptSecret } from "@/lib/crypto";
 
 async function ctx() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -230,10 +231,63 @@ export async function regenerateStudentPassword(studentId: string): Promise<{ ok
   try {
     const hash = await hashPassword(password);
     await db.update(accounts).set({ password: hash, updatedAt: new Date() }).where(and(eq(accounts.userId, stu.userId), eq(accounts.providerId, "credential")));
+    await db.update(students).set({ credentialEnc: encryptSecret(password), updatedAt: new Date() }).where(eq(students.id, studentId));
     await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: "student.password_reset", entityType: "Student", entityId: stu.userId, metadata: { name: `${stu.fn} ${stu.ln}`.trim() } });
     return { ok: true, password, studentName: `${stu.fn} ${stu.ln}`.trim() };
   } catch {
     return { error: "Could not reset the password. Please try again." };
+  }
+}
+
+// View a student's current login password. Possible only for passwords set after credential storage
+// was enabled (stored encrypted at rest); older ones return null and must be reset once to capture.
+// Admin/teacher only, and every view is audit-logged.
+export async function getStudentPassword(studentId: string): Promise<{ ok: true; password: string | null; studentName: string } | { error: string }> {
+  const c = await ctx();
+  if (!c?.canManage) return { error: "You don't have permission to view student passwords." };
+  const [stu] = await db.select({ enc: students.credentialEnc, fn: students.firstName, ln: students.lastName, userId: students.userId }).from(students).where(and(eq(students.id, studentId), eq(students.schoolId, c.schoolId))).limit(1);
+  if (!stu) return { error: "Student not found." };
+  const password = decryptSecret(stu.enc);
+  if (password) await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: "student.password_viewed", entityType: "Student", entityId: stu.userId ?? studentId, metadata: { name: `${stu.fn} ${stu.ln}`.trim() } });
+  return { ok: true, password, studentName: `${stu.fn} ${stu.ln}`.trim() };
+}
+
+// Live login credentials for the Logins view: each student's current (decrypted) password. Passwords
+// set before credential storage was enabled show as null until reset. Admin/teacher only; audited.
+export type StudentCredential = { id: string; name: string; admissionNo: string; className: string | null; password: string | null };
+export async function getStudentCredentials(input: { className?: string }): Promise<{ ok: true; rows: StudentCredential[]; matched: number } | { error: string }> {
+  const c = await ctx();
+  if (!c?.canManage) return { error: "You don't have permission to view student logins." };
+  const className = input.className?.trim();
+  const where = className ? and(eq(students.schoolId, c.schoolId), eq(students.className, className)) : eq(students.schoolId, c.schoolId);
+  const all = await db.select({ id: students.id, fn: students.firstName, ln: students.lastName, admissionNo: students.admissionNo, className: students.className, enc: students.credentialEnc }).from(students).where(where).orderBy(asc(students.className), asc(students.firstName));
+  const rows = all.slice(0, 500).map((r) => ({ id: r.id, name: `${r.fn} ${r.ln}`.trim(), admissionNo: r.admissionNo, className: r.className, password: decryptSecret(r.enc) }));
+  await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: "students.credentials_viewed", entityType: "Student", metadata: { count: rows.length, className: className ?? "all" } });
+  return { ok: true, rows, matched: all.length };
+}
+
+// Reset logins for a specific set of students (by students.id) and return the new credentials.
+export async function resetStudentPasswords(input: { studentIds: string[] }): Promise<{ ok: true; credentials: Credential[] } | { error: string }> {
+  const c = await ctx();
+  if (!c?.canManage) return { error: "You don't have permission to reset student logins." };
+  const ids = Array.from(new Set((input.studentIds ?? []).filter(Boolean))).slice(0, 250);
+  if (ids.length === 0) return { error: "Select at least one student." };
+  const [school] = await db.select({ name: schools.name }).from(schools).where(eq(schools.id, c.schoolId)).limit(1);
+  const rows = (await db.select({ id: students.id, userId: students.userId, fn: students.firstName, ln: students.lastName, admissionNo: students.admissionNo, className: students.className }).from(students).where(and(eq(students.schoolId, c.schoolId), inArray(students.id, ids)))).filter((r) => r.userId);
+  if (rows.length === 0) return { error: "No matching students with logins." };
+  const creds = rows.map((r) => ({ ...r, password: generateStudentPassword(school?.name), hash: "" }));
+  for (const cr of creds) cr.hash = await hashPassword(cr.password);
+  try {
+    await db.transaction(async (tx) => {
+      for (const cr of creds) {
+        await tx.update(accounts).set({ password: cr.hash, updatedAt: new Date() }).where(and(eq(accounts.userId, cr.userId!), eq(accounts.providerId, "credential")));
+        await tx.update(students).set({ credentialEnc: encryptSecret(cr.password), updatedAt: new Date() }).where(eq(students.id, cr.id));
+      }
+    });
+    await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: "students.passwords_reset", entityType: "Student", metadata: { count: creds.length, scope: "selected" } });
+    return { ok: true, credentials: creds.map((cr) => ({ name: `${cr.fn} ${cr.ln}`.trim(), studentId: cr.admissionNo, password: cr.password, className: cr.className })) };
+  } catch {
+    return { error: "Could not reset the selected logins. Please try again." };
   }
 }
 
@@ -274,7 +328,7 @@ export async function bulkResetPasswords(input: { className?: string }): Promise
   for (const cr of creds) cr.hash = await hashPassword(cr.password);
   try {
     await db.transaction(async (tx) => {
-      for (const cr of creds) await tx.update(accounts).set({ password: cr.hash, updatedAt: new Date() }).where(and(eq(accounts.userId, cr.userId!), eq(accounts.providerId, "credential")));
+      for (const cr of creds) { await tx.update(accounts).set({ password: cr.hash, updatedAt: new Date() }).where(and(eq(accounts.userId, cr.userId!), eq(accounts.providerId, "credential"))); await tx.update(students).set({ credentialEnc: encryptSecret(cr.password), updatedAt: new Date() }).where(eq(students.userId, cr.userId!)); }
     });
     await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: "students.passwords_reset", entityType: "Student", metadata: { count: creds.length, className: className ?? "all" } });
     return { ok: true, credentials: creds.map((cr) => ({ name: `${cr.fn} ${cr.ln}`.trim(), studentId: cr.admissionNo, password: cr.password, className: cr.className })) };

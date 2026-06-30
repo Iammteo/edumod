@@ -33,7 +33,7 @@ function Activity({ items }: { items: Trio[] }) {
 }
 function Empty({ text }: { text: string }) { return <div className="grid place-items-center rounded-xl border border-dashed border-border-soft py-10 text-center text-[12px] text-ink-soft">{text}</div>; }
 
-const FEE_TONE: Record<string, string> = { paid: "bg-brand-green/10 text-brand-green", partially_paid: "bg-[#fdf6e9] text-[#b9540f]", outstanding: "bg-[#fdeeee] text-[#b3261e]" };
+const FEE_TONE: Record<string, string> = { paid: "bg-brand-green/10 text-brand-green", partially_paid: "bg-warn-soft text-warn", outstanding: "bg-danger-soft text-danger" };
 const FEE_LABEL: Record<string, string> = { paid: "Paid", partially_paid: "Part paid", outstanding: "Outstanding" };
 function FeeRows({ items }: { items: StudentFee[] }) {
   return <div className="grid gap-2.5">{items.map((f) => (
@@ -122,7 +122,7 @@ export function StudentDashboard({ userName, schoolName, schoolCode, term, overv
   );
 }
 
-const resGradeTone = (g: string) => (g === "A" ? "text-brand-green" : g === "F" ? "text-[#b3261e]" : g === "D" || g === "E" ? "text-[#b9540f]" : "text-brand-blue");
+const resGradeTone = (g: string) => (g === "A" ? "text-brand-green" : g === "F" ? "text-danger" : g === "D" || g === "E" ? "text-warn" : "text-brand-blue");
 function ResultSheet({ t }: { t: StudentTermResult }) {
   return (
     <div className="rounded-xl border border-border-soft p-3.5">

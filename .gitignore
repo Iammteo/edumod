@@ -8,6 +8,8 @@ drizzle/meta
 
 # Uploaded files (logos, etc.)
 /public/uploads/
+# Private uploads (payment proofs) — served only via the auth-gated /api/proof route
+/private-uploads/
 
 # typescript incremental build cache
 tsconfig.tsbuildinfo

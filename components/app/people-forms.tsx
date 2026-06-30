@@ -18,7 +18,7 @@ function Submit({ busy, children }: { busy: boolean; children: React.ReactNode }
 }
 
 function Err({ msg }: { msg: string | null }) {
-  return msg ? <p className="text-[11px] font-bold text-[#b3261e]">{msg}</p> : null;
+  return msg ? <p className="text-[11px] font-bold text-danger">{msg}</p> : null;
 }
 
 // One-time credential display - admin/teacher copies these before they're gone.

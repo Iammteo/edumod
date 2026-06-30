@@ -1,10 +1,12 @@
 import { betterAuth } from "better-auth";
+import { APIError } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { username, emailOTP } from "better-auth/plugins";
+import { username, emailOTP, twoFactor } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 import { db } from "@/lib/db";
 import * as schema from "@/db/schema";
 import { sendEmail } from "@/lib/email";
+import { readDeviceId, evaluateStaffDevice } from "@/lib/device-trust";
 
 // Social providers are enabled only when their credentials are present, so the
 // app runs locally without them and lights them up once keys are added.
@@ -18,12 +20,32 @@ if (process.env.APPLE_CLIENT_ID && process.env.APPLE_CLIENT_SECRET) {
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: "pg", usePlural: true, schema }),
+  // Idle timeout: a session lasts 2h and slides forward on activity (refreshed at most every 30m).
+  // Idle longer than 2h → must sign in again. Combined with rememberMe:false, the cookie also dies
+  // when the browser closes.
+  session: { expiresIn: 60 * 60 * 2, updateAge: 60 * 30 },
+  // Device trust backstop: blocks session creation for staff signing in (any method - email, social,
+  // Staff ID) from a device an admin hasn't approved. The login page sets the device cookie; this
+  // hook only reads it (it must not set cookies - a thrown block would drop the Set-Cookie).
+  databaseHooks: {
+    session: {
+      create: {
+        before: async (session: { userId?: string }) => {
+          if (!session.userId) return;
+          const deviceId = await readDeviceId();
+          if (!deviceId) return; // no device cookie (e.g. cookies disabled) - the Staff-ID path still enforces
+          const dec = await evaluateStaffDevice(session.userId, deviceId);
+          if (!dec.allow) throw new APIError("FORBIDDEN", { message: dec.message ?? "This device needs admin approval." });
+        },
+      },
+    },
+  },
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,
-    // Verification is disabled so the app is usable before an email provider is
-    // wired. Set to true (and implement the email below) for production.
-    requireEmailVerification: false,
+    // Verify emails in production (a sender is wired below). Left off in dev so local signups don't
+    // need a working mailbox.
+    requireEmailVerification: process.env.NODE_ENV === "production",
     sendResetPassword: async ({ user, url }) => {
       // Used by the staff-invite flow ("set your password"). Fire-and-forget for speed.
       void sendEmail({
@@ -31,6 +53,17 @@ export const auth = betterAuth({
         subject: "Set your Edumod password",
         text: `You've been added to your school on Edumod.\n\nSet your password to get started:\n${url}\n\nIf you didn't expect this, you can safely ignore this email.`,
       }).catch((e) => console.error("[email] invite/reset send failed:", e));
+    },
+  },
+  emailVerification: {
+    sendOnSignUp: true,
+    autoSignInAfterVerification: true,
+    sendVerificationEmail: async ({ user, url }) => {
+      void sendEmail({
+        to: user.email,
+        subject: "Verify your Edumod email",
+        text: `Welcome to Edumod!\n\nConfirm your email to activate your account:\n${url}\n\nIf you didn't sign up, you can safely ignore this email.`,
+      }).catch((e) => console.error("[email] verification send failed:", e));
     },
   },
   user: {
@@ -41,6 +74,8 @@ export const auth = betterAuth({
   },
   socialProviders,
   plugins: [
+    // Optional TOTP 2FA (authenticator app). Enrolled users get a code challenge after their password.
+    twoFactor({ issuer: "Edumod" }),
     // Students log in with a composed username "schoolcode:studentid" (no email). The default
     // validator only allows [a-zA-Z0-9_.], so widen it to permit ":" and "-".
     username({

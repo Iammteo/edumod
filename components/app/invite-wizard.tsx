@@ -86,7 +86,7 @@ export function InviteWizard({ onClose, onDone }: { onClose: () => void; onDone:
           {step === 2 && <div className="grid gap-4">
             <p className="text-[13px] text-ink-soft">Edumod suggested this access based on the role and responsibilities. Adjust if needed.</p>
             <div className="overflow-x-auto"><table className="w-full min-w-[380px] text-left text-[12px]"><thead><tr className="border-b border-border-soft text-[10px] uppercase tracking-wide text-ink-soft"><th className="py-2 font-bold">Area</th><th className="py-2 font-bold">Access</th></tr></thead><tbody>{AREAS.map((a) => <tr key={a} className="border-b border-border-soft last:border-0"><td className="py-2.5 font-bold text-ink">{AREA_LABELS[a]}</td><td className="py-2.5"><select value={perm[a]} onChange={(e) => setPerm({ ...perm, [a]: e.target.value as Level })} className="rounded-lg border border-border-soft bg-white px-2 py-1 text-[11px] font-bold"><option value="none">No access</option>{LEVELS.map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}</select></td></tr>)}</tbody></table></div>
-            <label className="flex items-center justify-between rounded-xl border border-[#f3d9a8] bg-[#fdf6e9] p-3.5"><div><FieldLabel>Can approve payments</FieldLabel><p className="text-[11px] text-ink-soft">They can approve payments recorded by others - never their own.</p></div><Toggle on={f.canApprovePayments} onChange={(v) => set("canApprovePayments", v)} /></label>
+            <label className="flex items-center justify-between rounded-xl border border-warn-line bg-warn-soft p-3.5"><div><FieldLabel>Can approve payments</FieldLabel><p className="text-[11px] text-ink-soft">They can approve payments recorded by others - never their own.</p></div><Toggle on={f.canApprovePayments} onChange={(v) => set("canApprovePayments", v)} /></label>
           </div>}
 
           {step === 3 && <div className="grid gap-3 text-[13px]">
@@ -108,7 +108,7 @@ export function InviteWizard({ onClose, onDone }: { onClose: () => void; onDone:
           <div className="mt-4">
             <p className="mb-1.5 text-[11px] font-extrabold text-ink">They can</p>
             <ul className="grid gap-1">{summary.can.map((c) => <li key={c} className="flex gap-1.5 text-[11px] text-ink-soft"><span className="text-brand-green">✓</span>{c}</li>)}</ul>
-            {summary.cannot.length > 0 && <><p className="mb-1.5 mt-3 text-[11px] font-extrabold text-ink">They cannot</p><ul className="grid gap-1">{summary.cannot.map((c) => <li key={c} className="flex gap-1.5 text-[11px] text-ink-soft"><span className="text-[#b3261e]">✕</span>{c}</li>)}</ul></>}
+            {summary.cannot.length > 0 && <><p className="mb-1.5 mt-3 text-[11px] font-extrabold text-ink">They cannot</p><ul className="grid gap-1">{summary.cannot.map((c) => <li key={c} className="flex gap-1.5 text-[11px] text-ink-soft"><span className="text-danger">✕</span>{c}</li>)}</ul></>}
           </div>
           <p className="mt-4 rounded-lg bg-brand-soft/60 p-2.5 text-[10px] leading-relaxed text-ink-soft">Permissions are role-based and scoped to the assigned subjects and classes.</p>
         </aside>
@@ -120,7 +120,7 @@ export function InviteWizard({ onClose, onDone }: { onClose: () => void; onDone:
 function Result({ icon, tone, title, body, highlight, primary, secondary }: { icon: string; tone: "green" | "red"; title: string; body: string; highlight?: { label: string; value: string }; primary: [string, () => void]; secondary: [string, () => void] }) {
   return (
     <div className="grid place-items-center rounded-2xl border border-border-soft bg-white py-16 text-center motion-safe:animate-[fade-up_.4s_ease]">
-      <div className={`mb-4 grid size-16 place-items-center rounded-full text-3xl ${tone === "green" ? "bg-brand-green/10 text-brand-green" : "bg-[#fdeeee] text-[#b3261e]"}`}>{icon}</div>
+      <div className={`mb-4 grid size-16 place-items-center rounded-full text-3xl ${tone === "green" ? "bg-brand-green/10 text-brand-green" : "bg-danger-soft text-danger"}`}>{icon}</div>
       <h2 className="font-display text-[22px] font-semibold">{title}</h2>
       <p className="mt-1.5 max-w-md text-[13px] leading-relaxed text-ink-soft">{body}</p>
       {highlight && <div className="mt-4 inline-flex items-center gap-2 rounded-[12px] border border-brand-soft bg-brand-soft/40 px-4 py-2.5"><span className="text-[11px] font-extrabold uppercase tracking-wide text-ink-soft">{highlight.label}</span><code className="select-all font-display text-[18px] font-bold tracking-wide text-brand-blue">{highlight.value}</code><button type="button" onClick={() => navigator.clipboard?.writeText(highlight.value)} className="rounded-md px-2 py-1 text-[11px] font-extrabold text-brand-blue transition hover:bg-white" title="Copy">Copy</button></div>}

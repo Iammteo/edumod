@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getMarkableClasses, getStudentAttendance, markStudentAttendance, bulkMarkClass, getStudentAttendanceReport, getAttendanceAnalytics, type MarkableClass, type StudentAttendance, type StudentAttnReportRow, type AttendanceAnalytics } from "@/lib/actions/student-attendance";
+import { LoadingRows } from "./skeleton";
+import { Button, Alert } from "./ui";
 import { exportReport } from "@/lib/export-report";
 
 const ALL_CLASSES = "__all__";
@@ -19,9 +21,9 @@ const I_HELP = <><circle cx="12" cy="12" r="9" /><path d="M9.1 9a3 3 0 0 1 5.8 1
 
 const STATUS_BTN = [
   { key: "present", label: "Present", icon: I_CHECK, on: "border-brand-green/40 bg-brand-green/10 text-brand-green" },
-  { key: "absent", label: "Absent", icon: I_X, on: "border-[#f3c2c2] bg-[#fdeeee] text-[#b3261e]" },
-  { key: "late", label: "Late", icon: I_CLOCK, on: "border-[#f3d9a8] bg-[#fdf6e9] text-[#b9540f]" },
-  { key: "excused", label: "Excused", icon: I_SHIELD, on: "border-[#dccdf0] bg-[#f0e9fa] text-[#6b2fb3]" },
+  { key: "absent", label: "Absent", icon: I_X, on: "border-danger-line bg-danger-soft text-danger" },
+  { key: "late", label: "Late", icon: I_CLOCK, on: "border-warn-line bg-warn-soft text-warn" },
+  { key: "excused", label: "Excused", icon: I_SHIELD, on: "border-[#dccdf0] bg-accent-purple-soft text-accent-purple" },
 ] as const;
 type Status = "present" | "absent" | "late" | "excused";
 type CountsLite = { total: number; present: number; absent: number; late: number; excused: number; unmarked: number };
@@ -180,7 +182,7 @@ export function StudentAttendanceView({ embedded }: { embedded?: boolean }) {
         <div className="flex items-center gap-4"><SummaryDonut counts={counts} /><ul className="grid flex-1 gap-1.5 text-[11px]">{SUMMARY_SEGS.map((s) => <li key={s.key} className="flex items-center justify-between gap-2"><span className="flex items-center gap-1.5 font-bold text-ink"><span className="size-2 rounded-full" style={{ backgroundColor: s.color }} />{s.label}</span><span className="font-bold text-ink-soft">{counts[s.key]} ({pct(counts[s.key])})</span></li>)}</ul></div>
         {analytics && analytics.byClass.length > 0 && <div className="mt-4 border-t border-border-soft pt-3"><div className="mb-2 text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">By class</div><ul className="grid gap-2">{analytics.byClass.slice(0, 8).map((c) => <li key={c.className} className="grid grid-cols-[64px_1fr_30px] items-center gap-2 text-[11px]"><span className="truncate font-bold text-ink">{c.className}</span><span className="h-2 overflow-hidden rounded-full bg-paper"><span className="block h-full rounded-full bg-brand-green" style={{ width: `${c.rate}%` }} /></span><span className="text-right font-bold text-ink-soft">{c.rate}%</span></li>)}</ul></div>}
       </section>
-      <section className="rounded-2xl border border-border-soft bg-white p-4"><h3 className="mb-3 font-display text-[14px] font-semibold">Recent activity</h3>{!analytics || analytics.recent.length === 0 ? <p className="text-[11px] text-ink-soft">No recent attendance activity.</p> : <ul className="grid gap-2.5">{analytics.recent.map((a, i) => <li key={i} className="flex items-start gap-2.5"><span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-full ${a.kind === "cleared" ? "bg-[#fdeeee] text-[#b3261e]" : "bg-brand-green/10 text-brand-green"}`}>{Icon(I_CHECK)}</span><div className="min-w-0 flex-1"><div className="text-[11px] font-bold text-ink">{a.text}</div><div className="text-[10px] text-ink-soft">{a.time}</div></div></li>)}</ul>}</section>
+      <section className="rounded-2xl border border-border-soft bg-white p-4"><h3 className="mb-3 font-display text-[14px] font-semibold">Recent activity</h3>{!analytics || analytics.recent.length === 0 ? <p className="text-[11px] text-ink-soft">No recent attendance activity.</p> : <ul className="grid gap-2.5">{analytics.recent.map((a, i) => <li key={i} className="flex items-start gap-2.5"><span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-full ${a.kind === "cleared" ? "bg-danger-soft text-danger" : "bg-brand-green/10 text-brand-green"}`}>{Icon(I_CHECK)}</span><div className="min-w-0 flex-1"><div className="text-[11px] font-bold text-ink">{a.text}</div><div className="text-[10px] text-ink-soft">{a.time}</div></div></li>)}</ul>}</section>
     </div>
   );
 
@@ -208,12 +210,12 @@ export function StudentAttendanceView({ embedded }: { embedded?: boolean }) {
               <button onClick={() => runExport("csv")} className="block w-full rounded-lg px-2 py-1.5 text-left text-[12px] font-bold hover:bg-paper">CSV</button>
             </div></>}
           </div>
-          <button onClick={() => setNotice("Absence alerts are coming soon — guardians will be notified by SMS/email.")} className="inline-flex min-h-9 items-center gap-1.5 rounded-[10px] bg-brand-blue px-3.5 text-[12px] font-extrabold text-white transition hover:-translate-y-0.5 hover:bg-brand-dark">{Icon(<><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></>)} Send absence alert</button>
+          <Button variant="primary" size="sm" onClick={() => setNotice("Absence alerts are coming soon — guardians will be notified by SMS/email.")} className="hover:-translate-y-0.5">{Icon(<><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></>)} Send absence alert</Button>
         </div>
       </div>
 
-      {err && <div className="mb-4 rounded-[10px] border border-[#f3c2c2] bg-[#fdeeee] px-3 py-2 text-[12px] font-bold text-[#b3261e]">{err}</div>}
-      {notice && <div className="mb-4 rounded-[10px] border border-brand-soft bg-brand-soft/40 px-3 py-2 text-[12px] font-bold text-brand-blue">{notice}</div>}
+      {err && <Alert tone="error" className="mb-4">{err}</Alert>}
+      {notice && <Alert tone="info" className="mb-4">{notice}</Alert>}
 
       {(() => {
         if (allScope) {
@@ -221,7 +223,7 @@ export function StudentAttendanceView({ embedded }: { embedded?: boolean }) {
           if (allRows.length === 0) return <div className="grid place-items-center rounded-2xl border border-dashed border-border-soft bg-white py-12 text-center text-[12px] text-ink-soft">No students yet.</div>;
         } else {
           if (!picked) return <div className="grid place-items-center rounded-2xl border border-dashed border-border-soft bg-white py-12 text-center text-[12px] text-ink-soft">{classes.length === 0 ? "You aren't assigned a class." : "Select a class to begin."}</div>;
-          if (!data) return <p className="text-[12px] text-ink-soft">Loading…</p>;
+          if (!data) return <LoadingRows />;
         }
         return (
           <>
@@ -233,7 +235,7 @@ export function StudentAttendanceView({ embedded }: { embedded?: boolean }) {
                   <div className="grid content-start gap-3 sm:grid-cols-2">{allGroups.map((g) => { const r = g.total ? Math.round((g.present / g.total) * 100) : 0; return (
                     <button key={g.className} onClick={() => { setPicked(g.className); setScope("single"); }} className="rounded-2xl border border-border-soft bg-white p-4 text-left transition hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(16,33,63,.08)]">
                       <div className="flex items-center justify-between gap-3"><div className="min-w-0"><h3 className="truncate font-display text-[15px] font-semibold text-ink">{g.className || "Unassigned"}</h3><div className="mt-0.5 text-[11px] text-ink-soft">{g.present}/{g.total} present</div></div><RateDonut value={r} size={56} /></div>
-                      <div className="mt-3 flex flex-wrap gap-1.5 text-[10px] font-bold">{g.present > 0 && <span className="rounded-full bg-brand-green/10 px-2 py-0.5 text-brand-green">{g.present} present</span>}{g.late > 0 && <span className="rounded-full bg-[#fdf6e9] px-2 py-0.5 text-[#b9540f]">{g.late} late</span>}{g.absent > 0 && <span className="rounded-full bg-[#fdeeee] px-2 py-0.5 text-[#b3261e]">{g.absent} absent</span>}{g.excused > 0 && <span className="rounded-full bg-[#f0e9fa] px-2 py-0.5 text-[#6b2fb3]">{g.excused} excused</span>}{g.unmarked > 0 && <span className="rounded-full bg-paper px-2 py-0.5 text-ink-soft/70">{g.unmarked} unmarked</span>}</div>
+                      <div className="mt-3 flex flex-wrap gap-1.5 text-[10px] font-bold">{g.present > 0 && <span className="rounded-full bg-brand-green/10 px-2 py-0.5 text-brand-green">{g.present} present</span>}{g.late > 0 && <span className="rounded-full bg-warn-soft px-2 py-0.5 text-warn">{g.late} late</span>}{g.absent > 0 && <span className="rounded-full bg-danger-soft px-2 py-0.5 text-danger">{g.absent} absent</span>}{g.excused > 0 && <span className="rounded-full bg-accent-purple-soft px-2 py-0.5 text-accent-purple">{g.excused} excused</span>}{g.unmarked > 0 && <span className="rounded-full bg-paper px-2 py-0.5 text-ink-soft/70">{g.unmarked} unmarked</span>}</div>
                     </button>
                   ); })}</div>
                 </div>
@@ -245,7 +247,7 @@ export function StudentAttendanceView({ embedded }: { embedded?: boolean }) {
                     <div className="flex items-center gap-2.5"><Avatar name={data?.teacher?.name ?? "Class Teacher"} size={40} /><div><div className="text-[10px] font-bold uppercase tracking-wide text-ink-soft">Class teacher</div><div className="text-[13px] font-bold text-ink">{data?.teacher?.name ?? "Not assigned"}</div><button onClick={() => setNotice("Messaging is coming soon (Communications).")} className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-extrabold text-brand-blue hover:underline">{Icon(<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />)} Message</button></div></div>
                     <div className="ml-auto flex flex-wrap gap-1.5 self-start text-[10px] font-extrabold">{data?.canMark && filtered.length > 0 && <>
                       <button onClick={() => bulk("present")} disabled={busy} className="rounded-full border border-brand-green/30 bg-brand-green/10 px-2.5 py-1 text-brand-green disabled:opacity-60">All present</button>
-                      <button onClick={() => bulk("absent")} disabled={busy} className="rounded-full border border-[#f3c2c2] bg-[#fdeeee] px-2.5 py-1 text-[#b3261e] disabled:opacity-60">All absent</button>
+                      <button onClick={() => bulk("absent")} disabled={busy} className="rounded-full border border-danger-line bg-danger-soft px-2.5 py-1 text-danger disabled:opacity-60">All absent</button>
                       <button onClick={() => bulk("excused")} disabled={busy} className="rounded-full border border-border-soft bg-white px-2.5 py-1 text-ink-soft disabled:opacity-60">Not required</button>
                       {data!.marked > 0 && <button onClick={() => bulk("clear")} disabled={busy} className="rounded-full px-2 py-1 text-ink-soft underline disabled:opacity-60">Clear</button>}
                     </>}</div>

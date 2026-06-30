@@ -12,6 +12,24 @@
   --color-brand-soft: #e8efff;
   --color-brand-green: #178a4c;
   --color-border-soft: #e2e9f4;
+  /* Semantic palette — use these instead of inline hex so states stay consistent and themeable. */
+  --color-danger: #b3261e;
+  --color-danger-soft: #fdeeee;
+  --color-danger-line: #f3c2c2;
+  --color-danger-strong: #e5484d;
+  --color-danger-deep: #7a1d18;
+  --color-warn: #b9540f;
+  --color-warn-soft: #fdf6e9;
+  --color-warn-line: #f0d3a8;
+  --color-success: #178a4c;
+  --color-success-soft: #e4f5ea;
+  --color-success-line: #bfe3cf;
+  --color-accent-purple: #6b2fb3;
+  --color-accent-purple-soft: #f0e9fa;
+  --color-accent-teal: #0f8a8a;
+  --color-sidebar-active: #174e97;
+  --color-sidebar-muted: #9fb6d8;
+  --color-sidebar-faint: #ced9eb;
 }
 
 @layer base {

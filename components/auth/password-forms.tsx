@@ -11,7 +11,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     <div className="relative grid min-h-screen place-items-center overflow-hidden bg-paper px-5 py-12">
       <div aria-hidden className="pointer-events-none absolute inset-0">
         <span className="absolute -left-20 -top-10 size-72 rounded-full bg-brand-soft blur-3xl motion-safe:animate-[blob_18s_ease-in-out_infinite]" />
-        <span className="absolute -right-16 bottom-0 size-80 rounded-full bg-[#e4f5ea] blur-3xl motion-safe:animate-[blob_22s_ease-in-out_infinite]" />
+        <span className="absolute -right-16 bottom-0 size-80 rounded-full bg-success-soft blur-3xl motion-safe:animate-[blob_22s_ease-in-out_infinite]" />
       </div>
       <div className="relative w-full max-w-[420px] motion-safe:animate-[fade-up_.6s_ease]">
         <Link href="/" aria-label="Edumod home" className="mb-6 inline-block"><Logo /></Link>
@@ -35,7 +35,7 @@ function Submit({ busy, children }: { busy: boolean; children: React.ReactNode }
 }
 
 function ErrorBanner({ message }: { message: string }) {
-  return <div className="mb-4 rounded-[12px] border border-[#f3c2c2] bg-[#fdeeee] px-3.5 py-2.5 text-[12px] font-bold text-[#b3261e]">{message}</div>;
+  return <div className="mb-4 rounded-[12px] border border-danger-line bg-danger-soft px-3.5 py-2.5 text-[12px] font-bold text-danger">{message}</div>;
 }
 
 export function ForgotPasswordForm() {

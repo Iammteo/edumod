@@ -59,7 +59,7 @@ export function CalendarCard({ canManage }: { canManage: boolean }) {
           const evs = byDate.get(ds);
           return (
             <button key={i} onClick={() => { setDate(ds); if (canManage) setAdding(true); }} className="relative mx-auto grid size-7 place-items-center rounded-full text-[11px] font-bold transition hover:bg-paper">
-              <span className={`grid size-6 place-items-center rounded-full ${isToday ? "bg-brand-blue text-white" : evs ? "text-[#b9540f]" : "text-ink"}`}>{d}</span>
+              <span className={`grid size-6 place-items-center rounded-full ${isToday ? "bg-brand-blue text-white" : evs ? "text-warn" : "text-ink"}`}>{d}</span>
               {evs && !isToday && <span className="absolute -bottom-0 size-1 rounded-full" style={{ backgroundColor: KIND_COLOR[evs[0].kind] ?? "#2159e8" }} />}
             </button>
           );
@@ -73,7 +73,7 @@ export function CalendarCard({ canManage }: { canManage: boolean }) {
               <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: KIND_COLOR[e.kind] ?? "#2159e8" }} />
               <span className="font-bold text-ink-soft">{new Date(e.date + "T00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}</span>
               <span className="min-w-0 flex-1 truncate text-ink">{e.title}</span>
-              {canManage && <button onClick={() => remove(e.id)} className="shrink-0 text-ink-soft hover:text-[#b3261e]">✕</button>}
+              {canManage && <button onClick={() => remove(e.id)} className="shrink-0 text-ink-soft hover:text-danger">✕</button>}
             </li>
           ))}</ul>
         )}
@@ -81,7 +81,7 @@ export function CalendarCard({ canManage }: { canManage: boolean }) {
 
       {canManage && (adding ? (
         <div className="mt-2.5 grid gap-2 rounded-xl border border-border-soft bg-paper/50 p-2.5">
-          {err && <p className="text-[11px] font-bold text-[#b3261e]">{err}</p>}
+          {err && <p className="text-[11px] font-bold text-danger">{err}</p>}
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="min-h-8 rounded-md border border-border-soft bg-white px-2 text-[12px] outline-none focus:border-brand-blue" />
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Event (e.g. PTA Meeting)" className="min-h-8 rounded-md border border-border-soft bg-white px-2 text-[12px] outline-none focus:border-brand-blue" />
           <select value={kind} onChange={(e) => setKind(e.target.value)} className="min-h-8 rounded-md border border-border-soft bg-white px-2 text-[12px] outline-none focus:border-brand-blue"><option value="event">Event</option><option value="meeting">Meeting</option><option value="exam">Exam</option><option value="holiday">Holiday</option></select>

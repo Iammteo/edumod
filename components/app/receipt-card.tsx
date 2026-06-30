@@ -26,7 +26,21 @@ export type ReceiptSchool = { name: string | null; address: string | null; state
 // Shared receipt document - rendered by the staff route (/receipt/[id]) and the public share
 // route (/r/[token]). `shareToken` enables the Share button; pass null to hide it.
 export function ReceiptCard({ p, school, shareToken }: { p: ReceiptData; school: ReceiptSchool; shareToken?: string | null }) {
+  return (
+    <div className="min-h-screen bg-paper py-10 print:bg-white print:py-0">
+      <div className="mx-auto w-[min(640px,calc(100%-32px))]">
+        <div className="mb-4"><ReceiptActions shareToken={shareToken} /></div>
+        <ReceiptDoc p={p} school={school} shareToken={shareToken} />
+      </div>
+    </div>
+  );
+}
+
+// The receipt document itself (no page chrome) - reused for single and batch (print-all) views.
+export function ReceiptDoc({ p, school, shareToken }: { p: ReceiptData; school: ReceiptSchool; shareToken?: string | null }) {
   const no = `RCP-${p.id.slice(0, 8).toUpperCase()}`;
+  // Proofs are served through the auth-gated route; the share token lets the receipt holder view it.
+  const proofSrc = p.proofKey ? `/api/proof/${p.id}${shareToken ? `?token=${encodeURIComponent(shareToken)}` : ""}` : null;
   const naira = (n: number) => `₦${Number(n).toLocaleString()}`;
   const amount = naira(Number(p.amount));
   const date = new Date(p.approvedAt ?? p.createdAt).toLocaleDateString();
@@ -48,9 +62,6 @@ export function ReceiptCard({ p, school, shareToken }: { p: ReceiptData; school:
   ];
 
   return (
-    <div className="min-h-screen bg-paper py-10 print:bg-white print:py-0">
-      <div className="mx-auto w-[min(640px,calc(100%-32px))]">
-        <div className="mb-4"><ReceiptActions shareToken={shareToken} /></div>
         <div className="rounded-2xl border border-border-soft bg-white p-8 print:border-0 print:p-0">
           <div className="flex items-start justify-between border-b border-border-soft pb-5">
             <div><div className="inline-flex items-center gap-2 font-display text-[22px] font-semibold"><span className="grid size-6 rotate-45 place-items-center border-2 border-brand-green"><i className="size-[7px] border-2 border-brand-green" /></span>{school?.name ?? "Edumod"}</div><p className="mt-1 text-[12px] text-ink-soft">{[school?.address, school?.state, school?.country].filter(Boolean).join(", ")}</p></div>
@@ -59,22 +70,20 @@ export function ReceiptCard({ p, school, shareToken }: { p: ReceiptData; school:
           <div className="my-6 grid place-items-center"><div className="text-[12px] font-bold uppercase tracking-wide text-ink-soft">Amount paid</div><div className="font-display text-[40px] font-bold text-brand-green">{amount}</div></div>
           <dl className="grid gap-0">{rows.map(([k, v]) => <div key={k} className="flex justify-between gap-4 border-b border-border-soft py-3 last:border-0"><dt className="text-[12px] font-bold text-ink-soft">{k}</dt><dd className="text-right text-[13px] font-bold text-ink">{v}</dd></div>)}</dl>
           {hasInvoice && (
-            <div className={`mt-4 flex items-center justify-between rounded-xl border px-4 py-3 ${isPartial ? "border-[#f0d3a8] bg-[#fdf6e9]" : "border-brand-green/30 bg-brand-green/10"}`}>
-              <span className={`text-[12px] font-extrabold uppercase tracking-wide ${isPartial ? "text-[#b9540f]" : "text-brand-green"}`}>{isPartial ? "Outstanding balance" : "Balance - fully paid"}</span>
-              <span className={`font-display text-[20px] font-bold ${isPartial ? "text-[#b9540f]" : "text-brand-green"}`}>{naira(outstanding)}</span>
+            <div className={`mt-4 flex items-center justify-between rounded-xl border px-4 py-3 ${isPartial ? "border-warn-line bg-warn-soft" : "border-brand-green/30 bg-brand-green/10"}`}>
+              <span className={`text-[12px] font-extrabold uppercase tracking-wide ${isPartial ? "text-warn" : "text-brand-green"}`}>{isPartial ? "Outstanding balance" : "Balance - fully paid"}</span>
+              <span className={`font-display text-[20px] font-bold ${isPartial ? "text-warn" : "text-brand-green"}`}>{naira(outstanding)}</span>
             </div>
           )}
-          {isPartial && <p className="mt-2 text-center text-[11px] font-bold text-[#b9540f]">This is a part-payment. ₦{outstanding.toLocaleString()} is still outstanding on this fee.</p>}
+          {isPartial && <p className="mt-2 text-center text-[11px] font-bold text-warn">This is a part-payment. ₦{outstanding.toLocaleString()} is still outstanding on this fee.</p>}
           {(p.recordedBy || p.approvedBy) && (
             <div className="mt-6 grid grid-cols-2 gap-4 border-t border-border-soft pt-4 text-[11px]">
               <div><div className="font-bold uppercase tracking-wide text-ink-soft">Recorded by</div><div className="mt-0.5 text-[13px] font-bold text-ink">{p.recordedBy ?? "-"}</div></div>
               <div className="text-right"><div className="font-bold uppercase tracking-wide text-ink-soft">Approved by</div><div className="mt-0.5 text-[13px] font-bold text-ink">{p.approvedBy ?? "-"}</div></div>
             </div>
           )}
-          {p.proofKey && <div className="mt-6"><div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-ink-soft">Proof of payment</div><img src={p.proofKey} alt="Proof of payment" className="max-h-72 w-full rounded-xl border border-border-soft object-contain" /></div>}
+          {proofSrc && <div className="mt-6"><div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-ink-soft">Proof of payment</div><img src={proofSrc} alt="Proof of payment" className="max-h-72 w-full rounded-xl border border-border-soft object-contain" /></div>}
           <p className="mt-6 text-center text-[11px] text-ink-soft">This is a system-generated receipt from Edumod. Thank you.</p>
         </div>
-      </div>
-    </div>
   );
 }
