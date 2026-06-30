@@ -18,7 +18,8 @@ async function ctx() {
   const [m] = await db.select().from(memberships).where(eq(memberships.userId, session.user.id)).limit(1);
   if (!m) return null;
   const [school] = await db.select({ requireApproval: schools.requireApproval }).from(schools).where(eq(schools.id, m.schoolId)).limit(1);
-  return { userId: session.user.id, schoolId: m.schoolId, role: m.role, canManage: m.role === "school_admin" || m.role === "bursar", canApprove: m.role === "school_admin" || m.canApprovePayments, requireApproval: !!school?.requireApproval };
+  // Secretary can manage/request refunds but never approve them (separation of duties).
+  return { userId: session.user.id, schoolId: m.schoolId, role: m.role, canManage: m.role === "school_admin" || m.role === "secretary", canApprove: m.role !== "secretary" && (m.role === "school_admin" || m.canApprovePayments), requireApproval: !!school?.requireApproval };
 }
 
 // Credit = approved payments − amount billed − refunds already approved. Positive means overpaid.

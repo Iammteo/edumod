@@ -12,7 +12,7 @@ async function ctx() {
   if (!session) return null;
   const [m] = await db.select().from(memberships).where(eq(memberships.userId, session.user.id)).limit(1);
   if (!m) return null;
-  const canManage = ["school_admin", "principal", "vice_principal", "bursar", "teacher"].includes(m.role);
+  const canManage = ["school_admin", "principal", "vice_principal", "secretary", "teacher"].includes(m.role);
   return { userId: session.user.id, schoolId: m.schoolId, role: m.role, canManage };
 }
 

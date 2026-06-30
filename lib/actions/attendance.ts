@@ -15,7 +15,7 @@ import { logAudit } from "@/lib/audit";
 import { consumeOnce, isLockedOut, recordFailure, clearFailures } from "@/lib/rate-limit";
 
 const QR_GRACE_MS = 10_000; // 10s window to tolerate local cellular latency
-const STAFF_ROLES = ["teacher", "principal", "vice_principal", "bursar", "school_admin"];
+const STAFF_ROLES = ["teacher", "principal", "vice_principal", "secretary", "school_admin"];
 const ACCESS_DISABLED = "Your staff access is inactive. Please contact your school admin.";
 // Only leadership can run the attendance terminal (it lives on a dedicated admin device). Teachers
 // clock in *at* it (PIN/QR) but can't open it themselves.
@@ -127,7 +127,7 @@ export async function selfClockIn(): Promise<{ ok: true; direction: "clock_in" |
 }
 
 // ---- Printable teacher clock-in register (by day or week) ------------------------------------
-const ROLE_LABEL: Record<string, string> = { school_admin: "Admin", principal: "Principal", vice_principal: "Vice principal", teacher: "Teacher", bursar: "Bursar" };
+const ROLE_LABEL: Record<string, string> = { school_admin: "Admin", principal: "Principal", vice_principal: "Vice principal", teacher: "Teacher", secretary: "Secretary" };
 const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 function daysInRange(from: string, to: string): string[] {
   const out: string[] = []; let d = new Date(from + "T00:00"); const end = new Date(to + "T00:00");

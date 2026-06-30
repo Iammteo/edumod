@@ -7,7 +7,7 @@ import { getInvite, acceptInvite, sendInviteOtp, uploadStaffPhoto, type Invite }
 
 const STEPS = ["Accept invitation", "Set password", "Personal information", "Upload photo", "Ready"];
 const inputCls = "min-h-11 w-full rounded-[12px] border border-border-soft bg-white px-3.5 text-[14px] text-ink outline-none transition focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/20";
-const ROLE_LABEL: Record<string, string> = { principal: "Principal", vice_principal: "Vice principal", teacher: "Teacher", bursar: "Bursar" };
+const ROLE_LABEL: Record<string, string> = { principal: "Principal", vice_principal: "Vice principal", teacher: "Teacher", secretary: "Secretary" };
 const pwScore = (p: string) => [p.length >= 8, /[A-Z]/.test(p), /[0-9]/.test(p), /[^a-zA-Z0-9]/.test(p)].filter(Boolean).length;
 
 export function Onboarding({ token }: { token: string }) {

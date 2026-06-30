@@ -19,10 +19,10 @@ async function ctx() {
   if (!session) return null;
   const [m] = await db.select().from(memberships).where(eq(memberships.userId, session.user.id)).limit(1);
   if (!m) return null;
-  const canManage = m.role === "school_admin" || m.role === "teacher" || m.role === "principal" || m.role === "vice_principal";
+  const canManage = m.role === "school_admin" || m.role === "teacher" || m.role === "principal" || m.role === "vice_principal" || m.role === "secretary";
   const canApprove = m.role === "school_admin" || m.canApprovePayments;
   // Students/parents must never reach staff readers; only leadership may bulk-recover login secrets.
-  const isStaff = ["school_admin", "principal", "vice_principal", "bursar", "teacher"].includes(m.role);
+  const isStaff = ["school_admin", "principal", "vice_principal", "secretary", "teacher"].includes(m.role);
   const canViewSecrets = ["school_admin", "principal", "vice_principal"].includes(m.role);
   return { userId: session.user.id, schoolId: m.schoolId, role: m.role, canManage, canApprove, isStaff, canViewSecrets };
 }

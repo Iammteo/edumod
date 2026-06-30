@@ -3,7 +3,7 @@ import { boolean, date, index, integer, jsonb, numeric, pgEnum, pgTable, primary
 const id = () => uuid("id").defaultRandom().primaryKey();
 const timestamps = { createdAt: timestamp("created_at", { withTimezone:true }).notNull().defaultNow(), updatedAt: timestamp("updated_at", { withTimezone:true }).notNull().defaultNow() };
 
-export const membershipRole = pgEnum("membership_role", ["school_admin","principal","vice_principal","bursar","teacher","parent","student"]);
+export const membershipRole = pgEnum("membership_role", ["school_admin","principal","vice_principal","secretary","teacher","parent","student"]);
 export const paymentStatus = pgEnum("payment_status", ["pending_approval","approved","rejected","returned"]);
 export const paymentMethod = pgEnum("payment_method", ["cash","transfer"]);
 export const attendanceStatus = pgEnum("attendance_status", ["present","absent","late","excused"]);

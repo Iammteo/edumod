@@ -17,9 +17,9 @@ import { loadReceiptReport, RECEIPT_EXPORT_CAP, type ReceiptReportRow } from "@/
 // Accepted proof-of-payment file types → file extension. Server-validated against the upload's MIME.
 const PROOF_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg", "image/gif": "gif", "image/webp": "webp", "application/pdf": "pdf" };
 
-// Staff allowed to record payments / issue fees. Bursars and senior staff manage finance, not just
+// Staff allowed to record payments / issue fees. Secretaries and senior staff manage finance, not just
 // the owner-admin.
-const FINANCE_ROLES = ["school_admin", "bursar", "principal", "vice_principal"];
+const FINANCE_ROLES = ["school_admin", "secretary", "principal", "vice_principal"];
 // Hard ceiling on any single fee item / payment, to stop fat-finger and fraudulent 10-figure entries
 // (₦100,000,000). Amounts are numeric(14,2) in the DB; this keeps values sane and finite.
 const MAX_AMOUNT = 100_000_000;
@@ -30,7 +30,8 @@ async function ctx() {
   const [m] = await db.select().from(memberships).where(eq(memberships.userId, session.user.id)).limit(1);
   if (!m) return null;
   const [school] = await db.select({ requireApproval: schools.requireApproval }).from(schools).where(eq(schools.id, m.schoolId)).limit(1);
-  return { userId: session.user.id, schoolId: m.schoolId, role: m.role, canRecord: FINANCE_ROLES.includes(m.role), canApprove: m.role === "school_admin" || m.canApprovePayments, requireApproval: !!school?.requireApproval };
+  // The secretary records/issues finance but can never approve it (separation of duties).
+  return { userId: session.user.id, schoolId: m.schoolId, role: m.role, canRecord: FINANCE_ROLES.includes(m.role), canApprove: m.role !== "secretary" && (m.role === "school_admin" || m.canApprovePayments), requireApproval: !!school?.requireApproval };
 }
 
 export type Payment = { id: string; student: string; studentId: string; admissionNo: string; className: string | null; amount: number; method: string; status: string; recordedBy: string; approver: string | null; mine: boolean; date: string; recordedAt: string; description: string | null; invoiceId: string | null; proofKey: string | null; receiptKey: string | null };

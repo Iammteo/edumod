@@ -12,7 +12,7 @@ async function ctx() {
   if (!s) return null;
   const [m] = await db.select().from(memberships).where(eq(memberships.userId, s.user.id)).limit(1);
   if (!m) return null;
-  return { userId: s.user.id, schoolId: m.schoolId, isAdmin: ["school_admin", "principal", "vice_principal"].includes(m.role) };
+  return { userId: s.user.id, schoolId: m.schoolId, isAdmin: ["school_admin", "principal", "vice_principal", "secretary"].includes(m.role) };
 }
 
 export type SessionTerm = { session: string; term: string; current: boolean };

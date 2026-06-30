@@ -51,7 +51,7 @@ function navTarget(a: Audit): { section: string; studentId?: string } {
 const ACTION_LABEL: Record<string, string> = { "school.created": "School created", "student.added": "Student added", "staff.invited": "Staff invited", "staff.joined": "Staff joined", "payment.recorded": "Payment recorded", "payment.approved": "Payment approved", "payment.rejected": "Payment rejected", "fees.issued": "Fees issued", "settings.updated": "Settings updated" };
 const actLabel = (a: string) => ACTION_LABEL[a] ?? a.replace(/[._]/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 function relTime(ts: number) { const s = Math.floor((Date.now() - ts) / 1000); if (s < 60) return "just now"; const m = Math.floor(s / 60); if (m < 60) return `${m} min ago`; const h = Math.floor(m / 60); if (h < 24) return `${h} hr ago`; const d = Math.floor(h / 24); if (d < 7) return `${d} day${d > 1 ? "s" : ""} ago`; return new Date(ts).toLocaleDateString(); }
-type Props = { userName: string; school: School; students: Student[]; staff: Staff[]; audit: Audit[]; overview: AdminOverview; initialSection?: string };
+type Props = { userName: string; school: School; students: Student[]; staff: Staff[]; audit: Audit[]; overview: AdminOverview; initialSection?: string; restricted?: boolean };
 
 const I = (p: React.ReactNode) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="size-[18px]">{p}</svg>;
 const ICONS: Record<string, React.ReactNode> = {
@@ -75,8 +75,11 @@ function initials(name: string) { return name.split(" ").filter(Boolean).slice(0
 const AV_COLORS = ["#2159e8", "#178a4c", "#b9540f", "#6b2fb3", "#0d8aa8"];
 function Avatar({ name, size = 30 }: { name: string; size?: number }) { const c = AV_COLORS[name.length % AV_COLORS.length]; return <span className="grid shrink-0 place-items-center rounded-full font-extrabold text-white" style={{ width: size, height: size, backgroundColor: c, fontSize: size * 0.36 }}>{initials(name)}</span>; }
 
-export function AdminApp({ userName, school, students, staff, audit, overview, initialSection = "overview" }: Props) {
+export function AdminApp({ userName, school, students, staff, audit, overview, initialSection = "overview", restricted = false }: Props) {
   const [active, setActive] = useState(initialSection);
+  // The secretary runs this same interface minus staff management, school settings and finance approval.
+  const nav = restricted ? NAV.filter(([k]) => k !== "staff" && k !== "settings") : NAV;
+  const accountLabel = restricted ? "Secretary" : "School Admin";
   const [financeSection, setFinanceSection] = useState<FinanceSection | null>(null);
   const [studentsSection, setStudentsSection] = useState<StudentsSection | null>(null);
   // Which collapsible nav groups (finance/students) are expanded in the sidebar.
@@ -106,7 +109,7 @@ export function AdminApp({ userName, school, students, staff, audit, overview, i
         </div>
       </div>
       <nav className="grid min-h-0 flex-1 content-start gap-0.5 overflow-y-auto">
-        {NAV.map(([key, label, badge]) => (
+        {nav.map(([key, label, badge]) => (
           <div key={key}>
             <button onClick={() => { const collapsible = key === "finance" || key === "students"; if (collapsible) { if (active === key) toggleGroup(key); else { setActive(key); setExpanded((p) => new Set(p).add(key)); } } else { setActive(key); setOpen(false); } }} className={`flex w-full items-center gap-2.5 rounded-[9px] px-3 py-2 text-[13px] font-bold transition ${active === key ? "bg-sidebar-active text-white" : "text-sidebar-faint hover:bg-white/10"}`}>
               {I(ICONS[key])}<span className="flex-1 text-left">{label}</span>{(key === "finance" || key === "students") ? <span className={`transition ${expanded.has(key) ? "rotate-180" : ""}`}>{I(<path d="m6 9 6 6 6-6" />)}</span> : badge ? <span className="grid size-[18px] place-items-center rounded-full bg-brand-green text-[9px] text-white">{badge}</span> : null}
@@ -129,7 +132,7 @@ export function AdminApp({ userName, school, students, staff, audit, overview, i
         ))}
       </nav>
       <div className="mt-auto border-t border-white/15 pt-3.5">
-        <div className="flex items-center gap-2.5"><Avatar name={userName} size={34} /><div className="min-w-0 flex-1 text-[11px] text-white"><div className="truncate font-bold">{userName}</div><div className="text-sidebar-muted">School Admin</div></div></div>
+        <div className="flex items-center gap-2.5"><Avatar name={userName} size={34} /><div className="min-w-0 flex-1 text-[11px] text-white"><div className="truncate font-bold">{userName}</div><div className="text-sidebar-muted">{accountLabel}</div></div></div>
         <SupportMenu />
         {/* Sign out is in the top-right account menu on desktop; surface it in the drawer on mobile. */}
         <button onClick={logout} className="mt-1 flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-[12px] font-bold text-sidebar-faint transition hover:bg-white/10 hover:text-white lg:hidden">{I(<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></>)}<span className="flex-1 text-left">Sign out</span></button>
@@ -144,17 +147,17 @@ export function AdminApp({ userName, school, students, staff, audit, overview, i
 
       <div className="flex min-w-0 flex-col">
         <header className="sticky top-0 z-30 hidden items-center justify-end gap-1.5 border-b border-border-soft bg-white/95 px-7 py-2.5 backdrop-blur lg:flex">
-          <button onClick={() => setActive("settings")} aria-label="Settings" title="Settings" className="grid size-10 place-items-center rounded-full text-ink-soft transition hover:bg-paper hover:text-brand-blue">{I(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>)}</button>
+          {!restricted && <button onClick={() => setActive("settings")} aria-label="Settings" title="Settings" className="grid size-10 place-items-center rounded-full text-ink-soft transition hover:bg-paper hover:text-brand-blue">{I(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>)}</button>}
           <NotifBell open={notifOpen} setOpen={setNotifOpen} audit={audit} onViewAll={() => setActive("audit")} onNavigate={onNotif} />
           <div className="mx-1 h-7 w-px bg-border-soft" />
-          <UserMenu userName={userName} onSettings={() => setActive("settings")} onLogout={logout} />
+          <UserMenu userName={userName} accountLabel={accountLabel} showSettings={!restricted} onSettings={() => setActive("settings")} onLogout={logout} />
         </header>
         <header className="flex items-center justify-between gap-3 border-b border-border-soft bg-white px-4 py-3 lg:hidden">
           <button onClick={() => setOpen(true)} aria-label="Open menu" className="grid size-10 place-items-center rounded-[10px] border border-border-soft">{I(<><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" /></>)}</button>
           <span className="font-display text-[18px] font-semibold">{NAV.find((n) => n[0] === active)?.[1]}</span>
           <div className="flex items-center gap-1.5">
             <NotifBell open={notifOpen} setOpen={setNotifOpen} audit={audit} onViewAll={() => setActive("audit")} onNavigate={onNotif} />
-            <UserMenu userName={userName} onSettings={() => setActive("settings")} onLogout={logout} />
+            <UserMenu userName={userName} accountLabel={accountLabel} showSettings={!restricted} onSettings={() => setActive("settings")} onLogout={logout} />
           </div>
         </header>
 
@@ -162,8 +165,8 @@ export function AdminApp({ userName, school, students, staff, audit, overview, i
           <StudentNavProvider value={{ openStudent: (id) => navigate("students", id) }}>
           {active === "overview" && <Overview userName={userName} school={details} students={students} staff={staff} audit={audit} overview={overview} notifOpen={notifOpen} setNotifOpen={setNotifOpen} goto={navigate} onNotif={onNotif} onSchoolChange={(patch) => setDetails((d) => ({ ...d, ...patch }))} />}
           {active === "students" && <Students students={students} openStudentId={deepStudent} onConsumed={() => setDeepStudent(null)} section={studentsSection} onSection={setStudentsSection} />}
-          {active === "staff" && <><DeviceApprovals /><StaffView staff={staff} /></>}
-          {active === "settings" && <div className="grid gap-[18px]"><Settings school={details} logo={logo} onLogo={setLogo} onSaved={setDetails} /><TwoFactorSettings /><SessionManager /></div>}
+          {active === "staff" && !restricted && <><DeviceApprovals /><StaffView staff={staff} /></>}
+          {active === "settings" && !restricted && <div className="grid gap-[18px]"><Settings school={details} logo={logo} onLogo={setLogo} onSaved={setDetails} /><TwoFactorSettings /><SessionManager /></div>}
           {active === "audit" && <AuditLog audit={audit} />}
           {active === "finance" && <FinanceArea section={financeSection} onPick={setFinanceSection} />}
           {active === "attendance" && <StudentAttendanceView />}
@@ -219,17 +222,17 @@ function SupportMenu() {
     </div>
   );
 }
-function UserMenu({ userName, onSettings, onLogout }: { userName: string; onSettings: () => void; onLogout: () => void }) {
+function UserMenu({ userName, onSettings, onLogout, accountLabel = "School Admin", showSettings = true }: { userName: string; onSettings: () => void; onLogout: () => void; accountLabel?: string; showSettings?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="relative">
       <button onClick={() => setOpen((v) => !v)} aria-label="Account menu" className="flex items-center gap-2.5 rounded-full py-1 pl-1 pr-2 transition hover:bg-paper">
         <Avatar name={userName} size={34} />
-        <span className="hidden text-left sm:block"><span className="block max-w-[140px] truncate text-[12px] font-bold leading-tight text-ink">{userName}</span><span className="block text-[11px] leading-tight text-ink-soft">School Admin</span></span>
+        <span className="hidden text-left sm:block"><span className="block max-w-[140px] truncate text-[12px] font-bold leading-tight text-ink">{userName}</span><span className="block text-[11px] leading-tight text-ink-soft">{accountLabel}</span></span>
         <span className={`text-ink-soft transition ${open ? "rotate-180" : ""}`}>{I(<path d="m6 9 6 6 6-6" />)}</span>
       </button>
       {open && <><div className="fixed inset-0 z-40" onClick={() => setOpen(false)} /><div className="absolute right-0 top-12 z-50 w-48 rounded-xl border border-border-soft bg-white p-1.5 shadow-[0_20px_50px_rgba(16,33,63,.16)] motion-safe:animate-[fade-up_.2s_ease]">
-        <button onClick={() => { setOpen(false); onSettings(); }} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12px] font-bold text-ink transition hover:bg-paper">{I(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>)} Settings</button>
+        {showSettings && <button onClick={() => { setOpen(false); onSettings(); }} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12px] font-bold text-ink transition hover:bg-paper">{I(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>)} Settings</button>}
         <button onClick={() => { setOpen(false); onLogout(); }} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12px] font-bold text-danger transition hover:bg-danger-soft">{I(<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></>)} Sign out</button>
       </div></>}
     </div>
@@ -550,7 +553,7 @@ function PageBtn({ children, active, disabled, onClick }: { children: string; ac
 }
 
 /* ---------- Staff ---------- */
-const ROLE_LABEL: Record<string, string> = { school_admin: "Admin", principal: "Principal", vice_principal: "Vice principal", teacher: "Teacher", bursar: "Bursar" };
+const ROLE_LABEL: Record<string, string> = { school_admin: "Admin", principal: "Principal", vice_principal: "Vice principal", teacher: "Teacher", secretary: "Secretary" };
 const rank: Record<Level, number> = { none: 0, view: 1, edit: 2, approve: 3, full: 4 };
 function StaffStatusBadge({ status }: { status: string }) {
   const map: Record<string, [string, string]> = { active: ["Active", "bg-brand-green/10 text-brand-green"], pending: ["Pending", "bg-brand-soft text-brand-blue"], inactive: ["Inactive", "bg-paper text-ink-soft"], left: ["Left school", "bg-danger-soft text-danger"] };
@@ -601,8 +604,8 @@ function StaffView({ staff }: { staff: Staff[] }) {
         {stats.map(([label, value, color, bg]) => <div key={label} className="rounded-2xl border border-border-soft bg-white p-[18px]"><div className="flex items-center justify-between"><div><small className="font-bold text-ink-soft">{label}</small><strong className="mt-2 block font-display text-[26px] font-semibold leading-none">{value}</strong></div><span className="grid size-9 place-items-center rounded-full" style={{ backgroundColor: bg, color }}>{I(ICONS.staff)}</span></div></div>)}
       </div>
       <Card className="mt-[18px]">
-        <div className="mb-4 flex flex-col gap-2.5 sm:flex-row sm:items-center"><div className="flex flex-1 items-center gap-2 rounded-[10px] border border-border-soft bg-paper/60 px-3"><span className="text-ink-soft">{I(<><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></>)}</span><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search staff by name, email or role…" className="min-h-9 flex-1 bg-transparent text-[13px] outline-none" /></div><FilterSelect value={roleF} onChange={setRoleF} options={[{ v: "all", label: "All roles" }, { v: "teacher", label: "Teacher" }, { v: "principal", label: "Principal" }, { v: "vice_principal", label: "Vice principal" }, { v: "bursar", label: "Bursar" }]} /><FilterSelect value={statusF} onChange={setStatusF} options={[{ v: "all", label: "All statuses" }, { v: "active", label: "Active" }, { v: "pending", label: "Pending" }, { v: "inactive", label: "Inactive" }, { v: "left", label: "Left school" }]} /></div>
-        {rows.length === 0 ? <Empty text="No staff yet. Click “Invite staff member” to add your first teacher or bursar." /> : filtered.length === 0 ? <Empty text="No staff match your filters." /> : (
+        <div className="mb-4 flex flex-col gap-2.5 sm:flex-row sm:items-center"><div className="flex flex-1 items-center gap-2 rounded-[10px] border border-border-soft bg-paper/60 px-3"><span className="text-ink-soft">{I(<><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></>)}</span><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search staff by name, email or role…" className="min-h-9 flex-1 bg-transparent text-[13px] outline-none" /></div><FilterSelect value={roleF} onChange={setRoleF} options={[{ v: "all", label: "All roles" }, { v: "teacher", label: "Teacher" }, { v: "principal", label: "Principal" }, { v: "vice_principal", label: "Vice principal" }, { v: "secretary", label: "Secretary" }]} /><FilterSelect value={statusF} onChange={setStatusF} options={[{ v: "all", label: "All statuses" }, { v: "active", label: "Active" }, { v: "pending", label: "Pending" }, { v: "inactive", label: "Inactive" }, { v: "left", label: "Left school" }]} /></div>
+        {rows.length === 0 ? <Empty text="No staff yet. Click “Invite staff member” to add your first teacher or secretary." /> : filtered.length === 0 ? <Empty text="No staff match your filters." /> : (
         <div className="overflow-x-auto"><table className="w-full min-w-[680px] text-left text-[12px]">
           <thead><tr className="border-b border-border-soft text-[10px] uppercase tracking-wide text-ink-soft"><th className="py-2 font-bold">Staff member</th><th className="py-2 font-bold">Role</th><th className="py-2 font-bold">Teacher type</th><th className="py-2 font-bold">Subjects</th><th className="py-2 font-bold">Class</th><th className="py-2 font-bold">Status</th><th className="py-2 font-bold"></th></tr></thead>
           <tbody>{filtered.map((s, i) => <tr key={i} onClick={() => setSelected(s)} className="cursor-pointer border-b border-border-soft last:border-0 hover:bg-paper/60">

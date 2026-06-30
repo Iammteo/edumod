@@ -13,7 +13,7 @@ export const ROLES = [
   { key: "principal", label: "Principal", academic: true, desc: "School-wide academic oversight." },
   { key: "vice_principal", label: "Vice principal / Coordinator", academic: true, desc: "Academic oversight and exams." },
   { key: "teacher", label: "Teacher", academic: true, desc: "Teaches subjects; may run a class." },
-  { key: "bursar", label: "Bursar", academic: false, desc: "Records payments and fees." },
+  { key: "secretary", label: "Secretary", academic: false, desc: "Day-to-day administration; no settings, finance approval or staff management." },
 ] as const;
 export type RoleKey = (typeof ROLES)[number]["key"];
 
@@ -28,9 +28,9 @@ export type StaffResponsibilities = {
 };
 
 // Which template applies (teacher splits into class vs subject by responsibility).
-function templateFor(r: StaffResponsibilities): "school_admin" | "principal" | "vice_principal" | "class_teacher" | "subject_teacher" | "bursar" | "staff" {
+function templateFor(r: StaffResponsibilities): "school_admin" | "principal" | "vice_principal" | "class_teacher" | "subject_teacher" | "secretary" | "staff" {
   if (r.role === "teacher") return r.isClassTeacher ? "class_teacher" : "subject_teacher";
-  if (r.role === "school_admin" || r.role === "principal" || r.role === "vice_principal" || r.role === "bursar") return r.role;
+  if (r.role === "school_admin" || r.role === "principal" || r.role === "vice_principal" || r.role === "secretary") return r.role;
   return "staff";
 }
 
@@ -40,7 +40,7 @@ const TEMPLATES: Record<string, Record<Area, Level>> = {
   vice_principal: { students: "view", attendance: "view", exams: "edit", results: "edit", reports: "view", messages: "edit", finance: "none", settings: "none" },
   class_teacher: { students: "edit", attendance: "edit", exams: "edit", results: "edit", reports: "view", messages: "edit", finance: "none", settings: "none" },
   subject_teacher: { students: "view", attendance: "none", exams: "edit", results: "edit", reports: "view", messages: "none", finance: "none", settings: "none" },
-  bursar: { students: "view", attendance: "none", exams: "none", results: "none", reports: "view", messages: "none", finance: "edit", settings: "none" },
+  secretary: { students: "full", attendance: "full", exams: "edit", results: "edit", reports: "view", messages: "edit", finance: "edit", settings: "none" },
   staff: { students: "view", attendance: "none", exams: "none", results: "none", reports: "none", messages: "none", finance: "none", settings: "none" },
 };
 
@@ -70,13 +70,13 @@ export function buildSummary(r: StaffResponsibilities): { can: string[]; cannot:
   } else if (t === "principal" || t === "vice_principal") {
     can.push("View all students, staff and classes", "Review attendance and performance", "Manage exams and review results");
     if (t === "principal") can.push("Review results before publication");
-  } else if (t === "bursar") {
-    can.push("Record payments and upload evidence", "Create fee structures and invoices", "View reconciliation");
-    cannot.push("Approve a payment they recorded", "View academic scores or results");
+  } else if (t === "secretary") {
+    can.push("Manage students, classes and attendance", "Record payments and issue invoices", "View finances and reports");
+    cannot.push("Approve payments or refunds");
   }
-  if (r.canApprovePayments) can.push("Approve payments recorded by others");
+  if (r.canApprovePayments && r.role !== "secretary") can.push("Approve payments recorded by others");
   // universal "cannot" for non-admins
-  if (t !== "bursar") cannot.push("View school finances");
+  if (t !== "secretary") cannot.push("View school finances");
   if (!r.canApprovePayments) cannot.push("Approve payments");
   cannot.push("Edit school settings", "Manage other staff accounts");
   return { can, cannot: Array.from(new Set(cannot)) };

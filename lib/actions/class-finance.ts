@@ -11,7 +11,7 @@ async function ctx() {
   if (!session) return null;
   const [m] = await db.select().from(memberships).where(eq(memberships.userId, session.user.id)).limit(1);
   if (!m) return null;
-  const canView = ["school_admin", "bursar", "principal", "vice_principal"].includes(m.role);
+  const canView = ["school_admin", "secretary", "principal", "vice_principal"].includes(m.role);
   return { userId: session.user.id, schoolId: m.schoolId, canView };
 }
 

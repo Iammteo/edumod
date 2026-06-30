@@ -14,7 +14,7 @@ async function ctx() {
   if (!s) return null;
   const [m] = await db.select({ schoolId: memberships.schoolId, role: memberships.role }).from(memberships).where(eq(memberships.userId, s.user.id)).limit(1);
   if (!m) return null;
-  return { userId: s.user.id, schoolId: m.schoolId, canManage: ["school_admin", "principal", "vice_principal"].includes(m.role) };
+  return { userId: s.user.id, schoolId: m.schoolId, canManage: ["school_admin", "principal", "vice_principal", "secretary"].includes(m.role) };
 }
 
 // Natural ordering of class names so "next class" can be derived: rank by level, then trailing number.

@@ -38,7 +38,7 @@ export function FinanceArea({ section, onPick }: { section: FinanceSection | nul
   if (!data) return err ? <LoadError message={err} onRetry={load} /> : <LoadingPanel stats={5} />;
 
   const banners = <>{err && <div className="mb-4 rounded-[12px] border border-danger-line bg-danger-soft px-3.5 py-2.5 text-[12px] font-bold text-danger">{err}</div>}{ok && <div className="mb-4 rounded-[12px] border border-brand-green/30 bg-brand-green/10 px-3.5 py-2.5 text-[12px] font-bold text-brand-green">{ok}</div>}</>;
-  const noAccess = <div className="rounded-2xl border border-border-soft bg-paper/60 px-4 py-4 text-[12px] font-bold text-ink-soft">This action is available to an <span className="text-ink">admin, bursar, principal or vice-principal</span>.</div>;
+  const noAccess = <div className="rounded-2xl border border-border-soft bg-paper/60 px-4 py-4 text-[12px] font-bold text-ink-soft">This action is available to an <span className="text-ink">admin, secretary, principal or vice-principal</span>.</div>;
 
   const goReports = <button onClick={() => onPick("classsummary")} className="inline-flex min-h-9 items-center gap-1.5 self-start rounded-[10px] border border-border-soft bg-white px-3.5 text-[12px] font-extrabold text-ink-soft transition hover:border-brand-blue hover:text-brand-blue"><Chart />Go to reports</button>;
   return (
