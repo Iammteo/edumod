@@ -8,7 +8,6 @@ import { auditLogs, memberships, schools, staffProfiles, students as studentsTab
 
 // Turns an audit row's metadata into a specific, human-readable line (who/what/which student).
 function describeAudit(action: string, m: Record<string, unknown>): string {
-  const naira = (v: unknown) => `₦${Number(v || 0).toLocaleString()}`;
   const str = (v: unknown) => (typeof v === "string" ? v : "");
   const cls = m.className ? ` (${str(m.className)})` : "";
   switch (action) {
@@ -29,7 +28,7 @@ function describeAudit(action: string, m: Record<string, unknown>): string {
 import { AdminApp } from "@/components/app/admin-app";
 import { StaffDashboard, StudentDashboard } from "@/components/app/dashboards";
 import { adminOverview, studentOverview } from "@/lib/dashboard";
-import { roleLabel } from "@/lib/format";
+import { roleLabel, formatNaira as naira } from "@/lib/format";
 
 export default async function DashboardPage() {
   const session = await auth.api.getSession({ headers: await headers() });

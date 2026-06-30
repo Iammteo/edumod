@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getFinanceData, recordPayment, approvePayment, returnPayment, declinePayment, createFeeStructure, getInvoiceReport, getReceiptReport, sendInvoiceReminder, type FinanceData, type Payment, type Student, type InvoiceReportRow } from "@/lib/actions/finance";
+import { formatNaira as naira, compactNaira } from "@/lib/format";
 import type { ReceiptReportRow } from "@/lib/receipt";
 import { getOverpayments, carryForwardCredit, requestRefund, decideRefund, type OverpaymentRow, type RefundRow } from "@/lib/actions/refunds";
 import { StudentLink } from "./student-nav";
@@ -205,8 +206,6 @@ function RecordPaymentScreen({ data, onDone, onErr }: { data: FinanceData; onDon
     </div>
   );
 }
-
-const naira = (n: number) => `₦${Math.round(n).toLocaleString()}`;
 const initials = (s: string) => s.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("") || "?";
 const AV = ["#2159e8", "#178a4c", "#b9540f", "#6b2fb3", "#0f8a8a", "#c0392b"];
 const FEE_TYPES = ["Tuition", "Practical", "Lesson money", "Transport", "PTA"];
@@ -740,7 +739,6 @@ function ReceiptReportTab({ data }: { data: FinanceData }) {
 function Stat({ label, value, color }: { label: string; value: string; color?: string }) {
   return <div className="rounded-xl border border-border-soft bg-paper/50 px-3 py-2.5"><div className="text-[10px] font-bold uppercase tracking-wide text-ink-soft">{label}</div><div className="mt-0.5 font-display text-[16px] font-bold" style={color ? { color } : undefined}>{value}</div></div>;
 }
-const compactNaira = (n: number) => (n >= 1_000_000 ? `₦${(n / 1_000_000).toFixed(2).replace(/\.00$/, "")}M` : n >= 1000 ? `₦${(n / 1000).toFixed(0)}k` : `₦${Math.round(n)}`);
 
 // ---------------------------------------------------------------------------- Overpayments & refunds
 function OverpaymentsScreen({ onErr, onOk }: { onErr: (e: string) => void; onOk: (m: string) => void }) {

@@ -5,8 +5,7 @@ import { getClassFinance, getClassDetail, getOutstandingStudents, type ClassFina
 import { LoadingPanel, LoadError } from "./skeleton";
 import { exportReport } from "@/lib/export-report";
 import { StudentLink } from "./student-nav";
-
-const naira = (n: number) => `₦${Math.round(n).toLocaleString()}`;
+import { formatNaira as naira } from "@/lib/format";
 const compact = (n: number) => (n >= 1_000_000 ? `₦${(n / 1_000_000).toFixed(2).replace(/\.?0+$/, "")}M` : n >= 1000 ? `₦${Math.round(n / 1000)}k` : `₦${n}`);
 const initials = (s: string) => s.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("") || "?";
 const AV = ["#2159e8", "#178a4c", "#b9540f", "#6b2fb3", "#0f8a8a", "#c0392b"];

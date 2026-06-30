@@ -1,6 +1,7 @@
 // Reuses the receipt action bar (Back + Download/Print) — generic when no share token is passed.
 import { ReceiptActions } from "./receipt-actions";
 import type { InvoiceBill } from "@/lib/invoice";
+import { formatNaira as naira } from "@/lib/format";
 
 export type InvoiceSchool = { name: string | null; address: string | null; state: string | null; country: string | null; schoolCode: string | null } | undefined;
 
@@ -19,7 +20,6 @@ export function InvoiceCard({ i, school }: { i: InvoiceBill; school: InvoiceScho
 
 // The invoice document itself (no page chrome) - reused for single and batch (print-all) views.
 export function InvoiceDoc({ i, school }: { i: InvoiceBill; school: InvoiceSchool }) {
-  const naira = (n: number) => `₦${Number(n).toLocaleString()}`;
   const date = new Date(i.createdAt).toLocaleDateString();
   const isPaid = i.outstanding <= 0;
   const isPartial = i.paid > 0 && !isPaid;

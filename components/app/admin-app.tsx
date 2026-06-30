@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { signOut } from "@/lib/auth/client";
 import { AddStudentForm, ResetStudentPasswordForm } from "./people-forms";
 import { BarChart, DonutChart } from "./charts";
-import { roleLabel } from "@/lib/format";
+import { roleLabel, formatNaira as naira, compactNaira as compactN } from "@/lib/format";
 import { InviteWizard } from "./invite-wizard";
 import { FinanceArea, type FinanceSection } from "./finance-view";
 import { StudentNavProvider } from "./student-nav";
@@ -277,8 +277,6 @@ function NotifBell({ open, setOpen, audit, onViewAll, onNavigate }: { open: bool
 }
 
 /* ---------- Overview ---------- */
-const naira = (n: number) => `₦${n.toLocaleString()}`;
-const compactN = (n: number) => (n >= 1_000_000 ? `₦${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M` : n >= 1000 ? `₦${(n / 1000).toFixed(0)}k` : `₦${n}`);
 function WelcomeBanner({ userName, school, onSchoolChange }: { userName: string; school: School; onSchoolChange: (patch: Partial<School>) => void }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
