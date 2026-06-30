@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { listSessions, revokeSession, revokeOtherSessions, useSession } from "@/lib/auth/client";
+import { Button } from "./ui";
 
 type Sess = { id: string; token: string; ipAddress?: string | null; userAgent?: string | null; createdAt: string | Date; updatedAt?: string | Date };
 
@@ -35,7 +36,7 @@ export function SessionManager() {
     <section className="rounded-2xl border border-border-soft bg-white p-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-display text-[16px] font-semibold">Active sessions</h2>
-        {others.length > 0 && <button onClick={revokeOthers} disabled={busy === "others"} className="rounded-[10px] border border-border-soft bg-white px-3 py-1.5 text-[12px] font-extrabold text-[#b3261e] transition hover:bg-paper disabled:opacity-50">{busy === "others" ? "Signing out…" : "Sign out of all other devices"}</button>}
+        {others.length > 0 && <Button variant="danger" size="sm" onClick={revokeOthers} disabled={busy === "others"}>{busy === "others" ? "Signing out…" : "Sign out of all other devices"}</Button>}
       </div>
       {rows === null ? <p className="text-[12px] text-ink-soft">Loading…</p> : rows.length === 0 ? <p className="text-[12px] text-ink-soft">No active sessions.</p> : (
         <ul className="grid gap-2">
@@ -47,7 +48,7 @@ export function SessionManager() {
                   <div className="flex items-center gap-2"><span className="font-bold text-ink">{uaLabel(s.userAgent)}</span>{isCurrent && <span className="rounded-full bg-brand-green/10 px-2 py-0.5 text-[10px] font-extrabold text-brand-green">This device</span>}</div>
                   <div className="text-[11px] text-ink-soft">{s.ipAddress || "Unknown IP"} · signed in {new Date(s.createdAt).toLocaleString()}</div>
                 </div>
-                {!isCurrent && <button onClick={() => revokeOne(s.token)} disabled={busy === s.token} className="shrink-0 text-[11px] font-extrabold text-[#b3261e] hover:underline disabled:opacity-50">Sign out</button>}
+                {!isCurrent && <button onClick={() => revokeOne(s.token)} disabled={busy === s.token} className="shrink-0 text-[11px] font-extrabold text-danger hover:underline disabled:opacity-50">Sign out</button>}
               </li>
             );
           })}

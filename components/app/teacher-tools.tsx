@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getMyAttendance, selfClockIn, handleQrClockIn, setClockInPin, type MyAttendance } from "@/lib/actions/attendance";
 import { saveStudentResult } from "@/lib/actions/students";
+import { Button } from "./ui";
 import { QrScanModal } from "./qr-scanner";
 
 const METHOD: Record<string, string> = { qr_scan: "QR", kiosk_pin: "PIN", admin_override: "Override", self_portal: "Portal" };
@@ -41,10 +42,10 @@ export function MyAttendanceCard() {
           <div><div className="text-[11px] font-bold text-ink-soft">Status today</div><div className={`font-display text-[18px] font-bold ${inNow ? "text-brand-green" : "text-ink"}`}>{data.status === "none" ? "Not clocked in" : inNow ? "Clocked in" : "Clocked out"}</div>{data.lastAt && <div className="text-[10px] text-ink-soft">last at {data.lastAt}</div>}</div>
         </div>
         <button onClick={() => setScanning(true)} disabled={busy} className="mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-[12px] bg-brand-blue text-[14px] font-extrabold text-white transition hover:bg-brand-dark disabled:opacity-60">📷 Scan QR to {inNow ? "clock out" : "clock in"}</button>
-        <button onClick={clock} disabled={busy} className="mt-2 inline-flex min-h-9 w-full items-center justify-center rounded-[10px] border border-border-soft bg-white text-[12px] font-extrabold text-ink-soft transition hover:border-brand-blue hover:text-brand-blue disabled:opacity-60">{busy ? "Working…" : `No terminal nearby? ${inNow ? "Clock out" : "Clock in"} here`}</button>
+        <Button variant="secondary" size="sm" onClick={clock} disabled={busy} className="mt-2 w-full">{busy ? "Working…" : `No terminal nearby? ${inNow ? "Clock out" : "Clock in"} here`}</Button>
       </div>
       {ok && <p className="text-[12px] font-bold text-brand-green">{ok} ✓</p>}
-      {err && <p className="text-[12px] font-bold text-[#b3261e]">{err}</p>}
+      {err && <p className="text-[12px] font-bold text-danger">{err}</p>}
 
       <div className="flex items-center justify-between">
         <span className="text-[11px] font-extrabold text-ink-soft">Recent</span>
@@ -52,7 +53,7 @@ export function MyAttendanceCard() {
       </div>
       {showPin && <PinSetup mySet={data.pinSet} onDone={() => { setShowPin(false); load(); }} />}
       {data.history.length === 0 ? <p className="text-[12px] text-ink-soft">No clock-ins yet. Tap “Clock in”, or scan the terminal QR.</p> : (
-        <ul className="grid gap-1.5">{data.history.map((h, i) => <li key={i} className="flex items-center justify-between rounded-lg border border-border-soft px-3 py-1.5 text-[11px]"><span className={`font-extrabold ${h.direction === "clock_in" ? "text-brand-green" : "text-[#b9540f]"}`}>{h.direction === "clock_in" ? "In" : "Out"}</span><span className="text-ink-soft">{h.date} · {h.time}</span><span className="rounded bg-paper px-1.5 py-0.5 text-[10px] font-bold text-ink-soft">{METHOD[h.method] ?? h.method}</span></li>)}</ul>
+        <ul className="grid gap-1.5">{data.history.map((h, i) => <li key={i} className="flex items-center justify-between rounded-lg border border-border-soft px-3 py-1.5 text-[11px]"><span className={`font-extrabold ${h.direction === "clock_in" ? "text-brand-green" : "text-warn"}`}>{h.direction === "clock_in" ? "In" : "Out"}</span><span className="text-ink-soft">{h.date} · {h.time}</span><span className="rounded bg-paper px-1.5 py-0.5 text-[10px] font-bold text-ink-soft">{METHOD[h.method] ?? h.method}</span></li>)}</ul>
       )}
     </div>
   );
@@ -73,8 +74,8 @@ function PinSetup({ mySet, onDone }: { mySet: boolean; onDone: () => void }) {
         <input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" placeholder="New PIN" className={`${inputCls} text-center tracking-[.3em]`} />
         <input value={confirm} onChange={(e) => setConfirm(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" placeholder="Confirm" className={`${inputCls} text-center tracking-[.3em]`} />
       </div>
-      {err && <p className="text-[11px] font-bold text-[#b3261e]">{err}</p>}
-      <button onClick={save} disabled={busy} className="inline-flex min-h-9 w-fit items-center rounded-[9px] bg-brand-blue px-4 text-[12px] font-extrabold text-white disabled:opacity-60">{busy ? "Saving…" : "Save PIN"}</button>
+      {err && <p className="text-[11px] font-bold text-danger">{err}</p>}
+      <Button variant="primary" size="sm" onClick={save} disabled={busy} className="w-fit">{busy ? "Saving…" : "Save PIN"}</Button>
     </div>
   );
 }
@@ -110,10 +111,10 @@ export function RecordResults({ classStudents }: { classStudents: { id: string; 
         <label className="grid gap-1"><span className="text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">Subject</span><input list="subj" value={subject} onChange={(e) => setSubject(e.target.value)} required placeholder="Mathematics" className={inputCls} /></label>
         <label className="grid gap-1"><span className="text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">CA /40</span><input type="number" min="0" max="40" value={ca} onChange={(e) => setCa(e.target.value)} required className={inputCls} /></label>
         <label className="grid gap-1"><span className="text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">Exam /60</span><input type="number" min="0" max="60" value={exam} onChange={(e) => setExam(e.target.value)} required className={inputCls} /></label>
-        <button type="submit" disabled={busy} className="inline-flex min-h-9 items-center justify-center rounded-[10px] bg-brand-blue px-4 text-[12px] font-extrabold text-white disabled:opacity-60">{busy ? "…" : "Save"}</button>
+        <Button type="submit" variant="primary" size="sm" disabled={busy}>{busy ? "…" : "Save"}</Button>
       </div>
       {msg?.ok && <p className="text-[12px] font-bold text-brand-green">{msg.ok}</p>}
-      {msg?.err && <p className="text-[12px] font-bold text-[#b3261e]">{msg.err}</p>}
+      {msg?.err && <p className="text-[12px] font-bold text-danger">{msg.err}</p>}
     </form>
   );
 }

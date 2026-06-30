@@ -23,7 +23,7 @@ export function Onboarding({ token }: { token: string }) {
   useEffect(() => { getInvite(token).then((r) => setInvite(r)); }, [token]);
 
   if (invite === "loading") return <Shell><div className="grid place-items-center py-20 text-[13px] text-ink-soft">Loading your invitation…</div></Shell>;
-  if (!invite) return <Shell><div className="grid place-items-center py-16 text-center"><div className="mb-3 grid size-14 place-items-center rounded-full bg-[#fdeeee] text-2xl text-[#b3261e]">!</div><h1 className="font-display text-2xl font-semibold">Invitation not found</h1><p className="mt-2 max-w-sm text-[13px] text-ink-soft">This invitation link is invalid or has already been used. Please ask your school admin to re-send it.</p></div></Shell>;
+  if (!invite) return <Shell><div className="grid place-items-center py-16 text-center"><div className="mb-3 grid size-14 place-items-center rounded-full bg-danger-soft text-2xl text-danger">!</div><h1 className="font-display text-2xl font-semibold">Invitation not found</h1><p className="mt-2 max-w-sm text-[13px] text-ink-soft">This invitation link is invalid or has already been used. Please ask your school admin to re-send it.</p></div></Shell>;
 
   async function complete() {
     setBusy(true); setError(null);
@@ -54,7 +54,7 @@ export function Onboarding({ token }: { token: string }) {
       <div className="my-7 flex items-center gap-1">{STEPS.map((s, i) => { const n = i + 1; return <div key={s} className="flex flex-1 items-center gap-1 last:flex-none"><div className="flex items-center gap-2"><span className={`grid size-7 shrink-0 place-items-center rounded-full text-[11px] font-bold transition ${n < step ? "bg-brand-green text-white" : n === step ? "bg-brand-blue text-white" : "border border-border-soft bg-white text-ink-soft"}`}>{n < step ? "✓" : n}</span><span className={`hidden text-[11px] font-bold sm:block ${n === step ? "text-brand-blue" : "text-ink-soft"}`}>{s}</span></div>{n < STEPS.length && <span className={`h-px flex-1 ${n < step ? "bg-brand-green" : "bg-border-soft"}`} />}</div>; })}</div>
 
       <div className="rounded-2xl border border-border-soft bg-white p-6 sm:p-8 motion-safe:animate-[fade-up_.4s_ease]">
-        {error && <div className="mb-4 rounded-[12px] border border-[#f3c2c2] bg-[#fdeeee] px-3.5 py-2.5 text-[12px] font-bold text-[#b3261e]">{error}</div>}
+        {error && <div className="mb-4 rounded-[12px] border border-danger-line bg-danger-soft px-3.5 py-2.5 text-[12px] font-bold text-danger">{error}</div>}
 
         {step === 1 && <div className="grid gap-5 sm:grid-cols-[1fr_300px]">
           <div>

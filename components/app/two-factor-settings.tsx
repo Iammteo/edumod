@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { twoFactor, useSession } from "@/lib/auth/client";
+import { Button, Alert } from "./ui";
 
 // Authenticator-app (TOTP) two-factor setup. Enable → scan QR + save backup codes → verify a code.
 export function TwoFactorSettings() {
@@ -57,16 +58,16 @@ export function TwoFactorSettings() {
       </div>
       <p className="mb-3 text-[12px] text-ink-soft">Require a one-time code from an authenticator app (Google Authenticator, Authy, 1Password) in addition to your password.</p>
 
-      {err && <div className="mb-3 rounded-[10px] border border-[#f3c2c2] bg-[#fdeeee] px-3 py-2 text-[12px] font-bold text-[#b3261e]">{err}</div>}
-      {ok && <div className="mb-3 rounded-[10px] border border-brand-green/30 bg-brand-green/10 px-3 py-2 text-[12px] font-bold text-brand-green">{ok}</div>}
+      {err && <Alert tone="error" className="mb-3">{err}</Alert>}
+      {ok && <Alert tone="success" className="mb-3">{ok}</Alert>}
 
-      {!enabled && mode === "idle" && <button onClick={() => { setOk(null); setMode("password"); }} className="inline-flex min-h-10 items-center rounded-[10px] bg-brand-blue px-4 text-[13px] font-extrabold text-white transition hover:bg-brand-dark">Enable 2FA</button>}
+      {!enabled && mode === "idle" && <Button onClick={() => { setOk(null); setMode("password"); }}>Enable 2FA</Button>}
 
       {!enabled && mode === "password" && (
         <form onSubmit={startEnable} className="grid max-w-sm gap-2">
           <label className="text-[11px] font-extrabold text-ink">Confirm your password</label>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className={inputCls} />
-          <div className="flex gap-2"><button type="submit" disabled={busy} className="min-h-10 rounded-[10px] bg-brand-blue px-4 text-[13px] font-extrabold text-white disabled:opacity-60">{busy ? "Checking…" : "Continue"}</button><button type="button" onClick={reset} className="min-h-10 rounded-[10px] border border-border-soft px-4 text-[13px] font-extrabold text-ink-soft">Cancel</button></div>
+          <div className="flex gap-2"><Button type="submit" disabled={busy}>{busy ? "Checking…" : "Continue"}</Button><Button type="button" variant="secondary" onClick={reset}>Cancel</Button></div>
         </form>
       )}
 
@@ -83,17 +84,17 @@ export function TwoFactorSettings() {
           <form onSubmit={confirm} className="grid max-w-xs gap-2">
             <label className="text-[11px] font-extrabold text-ink">3. Enter the 6-digit code</label>
             <input inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="123456" className={inputCls} />
-            <div className="flex gap-2"><button type="submit" disabled={busy || code.length !== 6} className="min-h-10 rounded-[10px] bg-brand-blue px-4 text-[13px] font-extrabold text-white disabled:opacity-60">{busy ? "Verifying…" : "Turn on 2FA"}</button><button type="button" onClick={reset} className="min-h-10 rounded-[10px] border border-border-soft px-4 text-[13px] font-extrabold text-ink-soft">Cancel</button></div>
+            <div className="flex gap-2"><Button type="submit" disabled={busy || code.length !== 6}>{busy ? "Verifying…" : "Turn on 2FA"}</Button><Button type="button" variant="secondary" onClick={reset}>Cancel</Button></div>
           </form>
         </div>
       )}
 
-      {enabled && mode === "idle" && <button onClick={() => { setOk(null); setMode("disable"); }} className="inline-flex min-h-10 items-center rounded-[10px] border border-border-soft px-4 text-[13px] font-extrabold text-[#b3261e] transition hover:bg-paper">Disable 2FA</button>}
+      {enabled && mode === "idle" && <Button variant="danger" onClick={() => { setOk(null); setMode("disable"); }}>Disable 2FA</Button>}
       {enabled && mode === "disable" && (
         <form onSubmit={disable} className="grid max-w-sm gap-2">
           <label className="text-[11px] font-extrabold text-ink">Confirm your password to disable</label>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className={inputCls} />
-          <div className="flex gap-2"><button type="submit" disabled={busy} className="min-h-10 rounded-[10px] bg-[#b3261e] px-4 text-[13px] font-extrabold text-white disabled:opacity-60">{busy ? "Disabling…" : "Disable 2FA"}</button><button type="button" onClick={reset} className="min-h-10 rounded-[10px] border border-border-soft px-4 text-[13px] font-extrabold text-ink-soft">Cancel</button></div>
+          <div className="flex gap-2"><Button type="submit" variant="danger" disabled={busy}>{busy ? "Disabling…" : "Disable 2FA"}</Button><Button type="button" variant="secondary" onClick={reset}>Cancel</Button></div>
         </form>
       )}
     </section>

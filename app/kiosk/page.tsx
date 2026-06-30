@@ -115,7 +115,7 @@ function PinModal({ onClose }: { onClose: () => void }) {
           <input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="off" placeholder="••••••" className="min-h-12 rounded-xl border border-border-soft bg-paper/60 px-3 text-center text-[22px] font-bold tracking-[.4em] outline-none focus:border-brand-blue" />
         </label>
 
-        {toast && <p className={`mt-3 flex items-center gap-1.5 text-[13px] font-bold ${toast.ok ? "text-brand-green" : "text-[#b3261e]"}`}>{toast.ok ? <CheckCircle2 className="size-4" /> : <XCircle className="size-4" />}{toast.msg}</p>}
+        {toast && <p className={`mt-3 flex items-center gap-1.5 text-[13px] font-bold ${toast.ok ? "text-brand-green" : "text-danger"}`}>{toast.ok ? <CheckCircle2 className="size-4" /> : <XCircle className="size-4" />}{toast.msg}</p>}
 
         <button onClick={submit} disabled={busy} className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-blue text-[15px] font-extrabold text-white transition hover:bg-brand-dark disabled:opacity-70">
           {busy ? <><Loader2 className="size-5 animate-spin" /> Submitting…</> : <><Camera className="size-5" /> Capture & clock in</>}

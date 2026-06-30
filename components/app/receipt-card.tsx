@@ -70,12 +70,12 @@ export function ReceiptDoc({ p, school, shareToken }: { p: ReceiptData; school: 
           <div className="my-6 grid place-items-center"><div className="text-[12px] font-bold uppercase tracking-wide text-ink-soft">Amount paid</div><div className="font-display text-[40px] font-bold text-brand-green">{amount}</div></div>
           <dl className="grid gap-0">{rows.map(([k, v]) => <div key={k} className="flex justify-between gap-4 border-b border-border-soft py-3 last:border-0"><dt className="text-[12px] font-bold text-ink-soft">{k}</dt><dd className="text-right text-[13px] font-bold text-ink">{v}</dd></div>)}</dl>
           {hasInvoice && (
-            <div className={`mt-4 flex items-center justify-between rounded-xl border px-4 py-3 ${isPartial ? "border-[#f0d3a8] bg-[#fdf6e9]" : "border-brand-green/30 bg-brand-green/10"}`}>
-              <span className={`text-[12px] font-extrabold uppercase tracking-wide ${isPartial ? "text-[#b9540f]" : "text-brand-green"}`}>{isPartial ? "Outstanding balance" : "Balance - fully paid"}</span>
-              <span className={`font-display text-[20px] font-bold ${isPartial ? "text-[#b9540f]" : "text-brand-green"}`}>{naira(outstanding)}</span>
+            <div className={`mt-4 flex items-center justify-between rounded-xl border px-4 py-3 ${isPartial ? "border-warn-line bg-warn-soft" : "border-brand-green/30 bg-brand-green/10"}`}>
+              <span className={`text-[12px] font-extrabold uppercase tracking-wide ${isPartial ? "text-warn" : "text-brand-green"}`}>{isPartial ? "Outstanding balance" : "Balance - fully paid"}</span>
+              <span className={`font-display text-[20px] font-bold ${isPartial ? "text-warn" : "text-brand-green"}`}>{naira(outstanding)}</span>
             </div>
           )}
-          {isPartial && <p className="mt-2 text-center text-[11px] font-bold text-[#b9540f]">This is a part-payment. ₦{outstanding.toLocaleString()} is still outstanding on this fee.</p>}
+          {isPartial && <p className="mt-2 text-center text-[11px] font-bold text-warn">This is a part-payment. ₦{outstanding.toLocaleString()} is still outstanding on this fee.</p>}
           {(p.recordedBy || p.approvedBy) && (
             <div className="mt-6 grid grid-cols-2 gap-4 border-t border-border-soft pt-4 text-[11px]">
               <div><div className="font-bold uppercase tracking-wide text-ink-soft">Recorded by</div><div className="mt-0.5 text-[13px] font-bold text-ink">{p.recordedBy ?? "-"}</div></div>

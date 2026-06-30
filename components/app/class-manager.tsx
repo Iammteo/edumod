@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createClass, deleteClass, renameClass } from "@/lib/actions/school-classes";
 import { useManagedClasses } from "@/components/app/use-classes";
+import { Button } from "./ui";
 
 export function ClassManager() {
   const { rows, reload } = useManagedClasses();
@@ -49,9 +50,9 @@ export function ClassManager() {
       <p className="mt-0.5 text-[12px] text-ink-soft">Create, rename or remove classes - including the built-in ones. Renaming a class updates every student in it.</p>
       <form onSubmit={add} className="mt-3 flex flex-wrap items-center gap-2">
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="New class name (e.g. JSS 1A)" className="min-h-10 min-w-[200px] flex-1 rounded-[10px] border border-border-soft bg-paper/60 px-3 text-[13px] outline-none focus:border-brand-blue" />
-        <button type="submit" disabled={busy || !name.trim()} className="inline-flex min-h-10 items-center gap-1.5 rounded-[10px] bg-brand-blue px-4 text-[13px] font-extrabold text-white transition hover:bg-brand-dark disabled:opacity-60">＋ Add class</button>
+        <Button type="submit" variant="primary" size="md" disabled={busy || !name.trim()}>＋ Add class</Button>
       </form>
-      {err && <p className="mt-2 text-[12px] font-bold text-[#b3261e]">{err}</p>}
+      {err && <p className="mt-2 text-[12px] font-bold text-danger">{err}</p>}
       {!rows ? <p className="mt-4 text-[12px] text-ink-soft">Loading…</p>
         : <ul className="mt-4 grid gap-1.5 sm:grid-cols-2">{rows.map((c) => (
             <li key={c.name} className="flex items-center justify-between gap-2 rounded-xl border border-border-soft px-3 py-2">
@@ -66,7 +67,7 @@ export function ClassManager() {
                   <div className="min-w-0 flex-1"><span className="text-[13px] font-bold text-ink">{c.name}</span>{c.builtin && <span className="ml-2 rounded-full bg-paper px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-ink-soft">Default</span>}</div>
                   <span className="shrink-0 text-[11px] text-ink-soft">{c.students} student{c.students === 1 ? "" : "s"}</span>
                   <button onClick={() => startEdit(c.name)} className="grid size-7 shrink-0 place-items-center rounded-lg text-ink-soft transition hover:bg-brand-soft hover:text-brand-blue" title="Rename class">{pencil}</button>
-                  <button onClick={() => del(c.name)} className="grid size-7 shrink-0 place-items-center rounded-lg text-ink-soft transition hover:bg-[#fdeeee] hover:text-[#b3261e]" title="Remove class">✕</button>
+                  <button onClick={() => del(c.name)} className="grid size-7 shrink-0 place-items-center rounded-lg text-ink-soft transition hover:bg-danger-soft hover:text-danger" title="Remove class">✕</button>
                 </>
               )}
             </li>

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAttendanceData, setClockInPin, getTeacherAttendanceReport, type AttendanceData } from "@/lib/actions/attendance";
+import { LoadingPanel, LoadError } from "./skeleton";
+import { Button } from "./ui";
 import { exportReport } from "@/lib/export-report";
 
 const METHOD_LABEL: Record<string, string> = { qr_scan: "QR scan", kiosk_pin: "Kiosk PIN", admin_override: "Override", self_portal: "Portal" };
@@ -52,7 +54,7 @@ export function StaffClockInView() {
     exportReport(format, { title: "Staff clock-in register", subtitle: multiDay ? `${from} → ${to}` : from, columns, rows, filename: `staff-attendance-${from}${multiDay ? `_${to}` : ""}`, summary });
   }
 
-  if (!data) return <div className="grid place-items-center py-20 text-[13px] text-ink-soft">{err ?? "Loading attendance…"}</div>;
+  if (!data) return err ? <LoadError message={err} onRetry={load} /> : <LoadingPanel stats={4} />;
   const stats = [["Staff", String(data.staffTotal), "#2159e8", "#e7eefc"], ["Clocked in today", String(data.clockedIn), "#178a4c", "#e7f6ee"], ["Currently present", String(data.present), "#6b2fb3", "#f0e9fa"]] as const;
 
   return (
@@ -79,7 +81,7 @@ export function StaffClockInView() {
         </div>
       </div>
 
-      {err && <div className="mb-4 rounded-[12px] border border-[#f3c2c2] bg-[#fdeeee] px-3.5 py-2.5 text-[12px] font-bold text-[#b3261e]">{err}</div>}
+      {err && <div className="mb-4 rounded-[12px] border border-danger-line bg-danger-soft px-3.5 py-2.5 text-[12px] font-bold text-danger">{err}</div>}
       {showPin && <div className="mb-4"><PinSetup mySet={data.myPinSet} onDone={() => { setShowPin(false); load(); }} /></div>}
 
       <div className="mb-4 rounded-[12px] border border-brand-soft bg-brand-soft/30 px-4 py-3 text-[12px] text-ink-soft"><strong className="text-ink">How it works:</strong> Mount a tablet at the staff entrance and open the <strong className="text-ink">terminal</strong> (it shows a QR that rotates every 5s). Teachers scan it with their phone to clock in/out. No phone? They tap “Phone dead”, pick their name, enter their 6-digit PIN, and the tablet snaps a selfie.</div>
@@ -96,7 +98,7 @@ export function StaffClockInView() {
             <tbody>{data.logs.map((l) => (
               <tr key={l.id} className="border-b border-border-soft last:border-0 hover:bg-paper/60">
                 <td className="py-2.5 font-bold text-ink">{l.teacher}</td>
-                <td className="py-2.5"><span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${l.direction === "clock_in" ? "bg-brand-green/10 text-brand-green" : "bg-[#fdf6e9] text-[#b9540f]"}`}>{l.direction === "clock_in" ? "Clocked in" : "Clocked out"}</span></td>
+                <td className="py-2.5"><span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${l.direction === "clock_in" ? "bg-brand-green/10 text-brand-green" : "bg-warn-soft text-warn"}`}>{l.direction === "clock_in" ? "Clocked in" : "Clocked out"}</span></td>
                 <td className="py-2.5 text-ink-soft">{l.time}</td>
                 <td className="hidden py-2.5 text-ink-soft sm:table-cell">{METHOD_LABEL[l.method] ?? l.method}</td>
                 <td className="py-2.5 text-right">{l.snapshotUrl ? <a href={l.snapshotUrl} target="_blank" rel="noreferrer" className="font-extrabold text-brand-blue hover:underline">📷 View</a> : l.method === "kiosk_pin" ? <span className="text-ink-soft/60">uploading…</span> : <span className="text-ink-soft/50">-</span>}</td>
@@ -130,9 +132,9 @@ function PinSetup({ mySet, onDone }: { mySet: boolean; onDone: () => void }) {
       <div className="grid gap-2.5 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
         <label className="grid gap-1"><span className="text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">New PIN</span><input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" placeholder="••••••" className="min-h-10 rounded-[9px] border border-border-soft bg-paper/60 px-3 text-center text-[16px] font-bold tracking-[.3em] outline-none focus:border-brand-blue" /></label>
         <label className="grid gap-1"><span className="text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">Confirm</span><input value={confirm} onChange={(e) => setConfirm(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" placeholder="••••••" className="min-h-10 rounded-[9px] border border-border-soft bg-paper/60 px-3 text-center text-[16px] font-bold tracking-[.3em] outline-none focus:border-brand-blue" /></label>
-        <button onClick={save} disabled={busy} className="inline-flex min-h-10 items-center justify-center rounded-[10px] bg-brand-blue px-4 text-[13px] font-extrabold text-white transition hover:bg-brand-dark disabled:opacity-70">{busy ? "Saving…" : "Save PIN"}</button>
+        <Button variant="primary" size="md" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save PIN"}</Button>
       </div>
-      {err && <p className="mt-2 text-[12px] font-bold text-[#b3261e]">{err}</p>}
+      {err && <p className="mt-2 text-[12px] font-bold text-danger">{err}</p>}
     </div>
   );
 }

@@ -16,7 +16,7 @@ export async function invoiceBalance(invoiceId: string | null | undefined): Prom
 // ---------------------------------------------------------------------------- Receipt reports
 export const RECEIPT_EXPORT_CAP = 200;
 export type ReceiptFilter = { className?: string; termLabel?: string; from?: string; to?: string };
-export type ReceiptReportRow = { id: string; no: string; student: string; className: string | null; method: string; amount: number; date: string; token: string | null };
+export type ReceiptReportRow = { id: string; studentId: string; no: string; student: string; className: string | null; method: string; amount: number; date: string; token: string | null };
 const rcpNo = (id: string) => `RCP-${id.slice(0, 8).toUpperCase()}`;
 
 // Receipts (approved payments) are joined to their invoice's fee structure so they can be filtered
@@ -30,13 +30,13 @@ function receiptConds(schoolId: string, f: ReceiptFilter) {
   return c;
 }
 export async function loadReceiptReport(schoolId: string, f: ReceiptFilter): Promise<{ rows: ReceiptReportRow[]; matched: number }> {
-  const rows = await db.select({ id: payments.id, amount: payments.amount, method: payments.method, createdAt: payments.createdAt, receiptKey: payments.receiptKey, sf: students.firstName, sl: students.lastName, className: students.className })
+  const rows = await db.select({ id: payments.id, sid: students.id, amount: payments.amount, method: payments.method, createdAt: payments.createdAt, receiptKey: payments.receiptKey, sf: students.firstName, sl: students.lastName, className: students.className })
     .from(payments)
     .innerJoin(students, eq(students.id, payments.studentId))
     .leftJoin(invoices, eq(invoices.id, payments.invoiceId))
     .leftJoin(feeStructures, eq(feeStructures.id, invoices.feeStructureId))
     .where(and(...receiptConds(schoolId, f))).orderBy(desc(payments.createdAt));
-  const mapped: ReceiptReportRow[] = rows.map((r) => ({ id: r.id, no: rcpNo(r.id), student: `${r.sf} ${r.sl}`.trim(), className: r.className, method: r.method, amount: Number(r.amount), date: new Date(r.createdAt).toLocaleDateString(), token: r.receiptKey }));
+  const mapped: ReceiptReportRow[] = rows.map((r) => ({ id: r.id, studentId: r.sid, no: rcpNo(r.id), student: `${r.sf} ${r.sl}`.trim(), className: r.className, method: r.method, amount: Number(r.amount), date: new Date(r.createdAt).toLocaleDateString(), token: r.receiptKey }));
   return { rows: mapped.slice(0, RECEIPT_EXPORT_CAP), matched: mapped.length };
 }
 

@@ -7,11 +7,15 @@ import { AddStudentForm, ResetStudentPasswordForm } from "./people-forms";
 import { BarChart, DonutChart } from "./charts";
 import { InviteWizard } from "./invite-wizard";
 import { FinanceArea, type FinanceSection } from "./finance-view";
+import { StudentNavProvider } from "./student-nav";
+import { PromotionScreen } from "./promotion";
 import { DeviceApprovals } from "./device-approvals";
 import { SessionManager } from "./session-manager";
 import { TwoFactorSettings } from "./two-factor-settings";
 
 const FINANCE_SUB: [FinanceSection, string][] = [["record", "Record payment"], ["approvals", "Approvals"], ["bills", "Bills & fee structures"], ["invoices", "Invoices & receipts"], ["classsummary", "Class finance summary"], ["overpayments", "Overpayments & refunds"], ["reports", "Report card"]];
+type StudentsSection = "classes" | "logins" | "add" | "promote";
+const STUDENTS_SUB: [StudentsSection, string][] = [["classes", "🏫 Manage classes"], ["logins", "🔑 Logins"], ["add", "Add student"], ["promote", "⬆ Promote students"]];
 import { StudentProfilePage } from "./student-profile";
 import { EmptyArt } from "./illustration";
 import { CalendarCard } from "./calendar";
@@ -73,6 +77,10 @@ function Avatar({ name, size = 30 }: { name: string; size?: number }) { const c 
 export function AdminApp({ userName, school, students, staff, audit, overview, initialSection = "overview" }: Props) {
   const [active, setActive] = useState(initialSection);
   const [financeSection, setFinanceSection] = useState<FinanceSection | null>(null);
+  const [studentsSection, setStudentsSection] = useState<StudentsSection | null>(null);
+  // Which collapsible nav groups (finance/students) are expanded in the sidebar.
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initialSection === "finance" || initialSection === "students" ? [initialSection] : []));
+  const toggleGroup = (key: string) => setExpanded((p) => { const n = new Set(p); n.has(key) ? n.delete(key) : n.add(key); return n; });
   const [open, setOpen] = useState(false);
   const [logo, setLogo] = useState<string | null>(school.logoKey);
   const [details, setDetails] = useState(school);
@@ -81,7 +89,7 @@ export function AdminApp({ userName, school, students, staff, audit, overview, i
   const router = useRouter();
   async function logout() { await signOut(); router.push("/login"); }
   // Single navigation entry point so notifications/activity can jump to a section (and optionally a student).
-  function navigate(section: string, studentId?: string) { if (studentId) setDeepStudent(studentId); setActive(section); setOpen(false); }
+  function navigate(section: string, studentId?: string) { if (studentId) setDeepStudent(studentId); setActive(section); if (section === "finance" || section === "students") setExpanded((p) => new Set(p).add(section)); setOpen(false); }
   function onNotif(a: Audit) { const t = navTarget(a); navigate(t.section, t.studentId); }
 
   const sidebar = (
@@ -93,19 +101,26 @@ export function AdminApp({ userName, school, students, staff, audit, overview, i
         </div>
         <div className="px-4 pb-3.5 pt-2 text-center">
           <div className="line-clamp-2 font-display text-[17px] font-bold leading-tight text-white">{details.name}</div>
-          <div className="mt-0.5 text-[11px] text-[#9fb6d8]">Excellence in Education</div>
+          <div className="mt-0.5 text-[11px] text-sidebar-muted">Excellence in Education</div>
         </div>
       </div>
       <nav className="grid min-h-0 flex-1 content-start gap-0.5 overflow-y-auto">
         {NAV.map(([key, label, badge]) => (
           <div key={key}>
-            <button onClick={() => { setActive(key); if (key !== "finance") setOpen(false); }} className={`flex w-full items-center gap-2.5 rounded-[9px] px-3 py-2 text-[13px] font-bold transition ${active === key ? "bg-[#174e97] text-white" : "text-[#ced9eb] hover:bg-white/10"}`}>
-              {I(ICONS[key])}<span className="flex-1 text-left">{label}</span>{key === "finance" ? <span className={`transition ${active === "finance" ? "rotate-180" : ""}`}>{I(<path d="m6 9 6 6 6-6" />)}</span> : badge ? <span className="grid size-[18px] place-items-center rounded-full bg-brand-green text-[9px] text-white">{badge}</span> : null}
+            <button onClick={() => { const collapsible = key === "finance" || key === "students"; if (collapsible) { if (active === key) toggleGroup(key); else { setActive(key); setExpanded((p) => new Set(p).add(key)); } } else { setActive(key); setOpen(false); } }} className={`flex w-full items-center gap-2.5 rounded-[9px] px-3 py-2 text-[13px] font-bold transition ${active === key ? "bg-sidebar-active text-white" : "text-sidebar-faint hover:bg-white/10"}`}>
+              {I(ICONS[key])}<span className="flex-1 text-left">{label}</span>{(key === "finance" || key === "students") ? <span className={`transition ${expanded.has(key) ? "rotate-180" : ""}`}>{I(<path d="m6 9 6 6 6-6" />)}</span> : badge ? <span className="grid size-[18px] place-items-center rounded-full bg-brand-green text-[9px] text-white">{badge}</span> : null}
             </button>
-            {key === "finance" && active === "finance" && (
+            {key === "finance" && expanded.has("finance") && (
               <div className="mb-1 mt-0.5 grid gap-0.5 border-l border-white/10 pl-3.5">
                 {FINANCE_SUB.map(([sk, sl]) => (
-                  <button key={sk} onClick={() => { setFinanceSection(sk); setOpen(false); }} className={`flex items-center gap-2 rounded-[8px] px-3 py-1.5 text-left text-[12px] font-bold transition ${financeSection === sk ? "bg-white/10 text-white" : "text-[#9fb6d8] hover:bg-white/5 hover:text-white"}`}><span className={`size-1.5 rounded-full ${financeSection === sk ? "bg-brand-green" : "bg-white/20"}`} />{sl}</button>
+                  <button key={sk} onClick={() => { setActive("finance"); setFinanceSection(sk); setOpen(false); }} className={`flex items-center gap-2 rounded-[8px] px-3 py-1.5 text-left text-[12px] font-bold transition ${active === "finance" && financeSection === sk ? "bg-white/10 text-white" : "text-sidebar-muted hover:bg-white/5 hover:text-white"}`}><span className={`size-1.5 rounded-full ${active === "finance" && financeSection === sk ? "bg-brand-green" : "bg-white/20"}`} />{sl}</button>
+                ))}
+              </div>
+            )}
+            {key === "students" && expanded.has("students") && (
+              <div className="mb-1 mt-0.5 grid gap-0.5 border-l border-white/10 pl-3.5">
+                {STUDENTS_SUB.map(([sk, sl]) => (
+                  <button key={sk} onClick={() => { setActive("students"); setStudentsSection(sk); setOpen(false); }} className={`flex items-center gap-2 rounded-[8px] px-3 py-1.5 text-left text-[12px] font-bold transition ${active === "students" && studentsSection === sk ? "bg-white/10 text-white" : "text-sidebar-muted hover:bg-white/5 hover:text-white"}`}><span className={`size-1.5 rounded-full ${active === "students" && studentsSection === sk ? "bg-brand-green" : "bg-white/20"}`} />{sl}</button>
                 ))}
               </div>
             )}
@@ -113,10 +128,10 @@ export function AdminApp({ userName, school, students, staff, audit, overview, i
         ))}
       </nav>
       <div className="mt-auto border-t border-white/15 pt-3.5">
-        <div className="flex items-center gap-2.5"><Avatar name={userName} size={34} /><div className="min-w-0 flex-1 text-[11px] text-white"><div className="truncate font-bold">{userName}</div><div className="text-[#9fb6d8]">School Admin</div></div></div>
+        <div className="flex items-center gap-2.5"><Avatar name={userName} size={34} /><div className="min-w-0 flex-1 text-[11px] text-white"><div className="truncate font-bold">{userName}</div><div className="text-sidebar-muted">School Admin</div></div></div>
         <SupportMenu />
         {/* Sign out is in the top-right account menu on desktop; surface it in the drawer on mobile. */}
-        <button onClick={logout} className="mt-1 flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-[12px] font-bold text-[#ced9eb] transition hover:bg-white/10 hover:text-white lg:hidden">{I(<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></>)}<span className="flex-1 text-left">Sign out</span></button>
+        <button onClick={logout} className="mt-1 flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-[12px] font-bold text-sidebar-faint transition hover:bg-white/10 hover:text-white lg:hidden">{I(<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></>)}<span className="flex-1 text-left">Sign out</span></button>
       </div>
     </>
   );
@@ -143,14 +158,16 @@ export function AdminApp({ userName, school, students, staff, audit, overview, i
         </header>
 
         <main className="overflow-x-hidden p-4 pb-24 sm:p-6 sm:pb-24 lg:px-7 lg:py-6 lg:pb-6">
+          <StudentNavProvider value={{ openStudent: (id) => navigate("students", id) }}>
           {active === "overview" && <Overview userName={userName} school={details} students={students} staff={staff} audit={audit} overview={overview} notifOpen={notifOpen} setNotifOpen={setNotifOpen} goto={navigate} onNotif={onNotif} onSchoolChange={(patch) => setDetails((d) => ({ ...d, ...patch }))} />}
-          {active === "students" && <Students students={students} openStudentId={deepStudent} onConsumed={() => setDeepStudent(null)} />}
+          {active === "students" && <Students students={students} openStudentId={deepStudent} onConsumed={() => setDeepStudent(null)} section={studentsSection} onSection={setStudentsSection} />}
           {active === "staff" && <><DeviceApprovals /><StaffView staff={staff} /></>}
           {active === "settings" && <div className="grid gap-[18px]"><Settings school={details} logo={logo} onLogo={setLogo} onSaved={setDetails} /><TwoFactorSettings /><SessionManager /></div>}
           {active === "audit" && <AuditLog audit={audit} />}
           {active === "finance" && <FinanceArea section={financeSection} onPick={setFinanceSection} />}
           {active === "attendance" && <StudentAttendanceView />}
           {["exams", "timetable", "communications", "reports"].includes(active) && <ComingSoon name={NAV.find((n) => n[0] === active)![1]} />}
+          </StudentNavProvider>
         </main>
 
         {/* Mobile bottom tab bar - quick access to the top sections; "More" opens the full drawer. */}
@@ -187,7 +204,7 @@ function SupportMenu() {
   const item = "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-bold transition";
   return (
     <div className="relative mt-2">
-      <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-[12px] font-bold text-[#ced9eb] transition hover:bg-white/10 hover:text-white">
+      <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-[12px] font-bold text-sidebar-faint transition hover:bg-white/10 hover:text-white">
         {I(<><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" /></>)}
         <span className="flex-1 text-left">Help &amp; support</span>
         <span className={`transition ${open ? "rotate-180" : ""}`}>{I(<path d="m18 15-6-6-6 6" />)}</span>
@@ -196,7 +213,7 @@ function SupportMenu() {
         <p className="px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">Help &amp; support</p>
         <a href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Edumod support request")}`} onClick={() => setOpen(false)} className={`${item} text-ink hover:bg-paper`}>{I(<><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-10 5L2 7" /></>)} Email support</a>
         <a href={HELP_URL} target="_blank" rel="noreferrer" onClick={() => setOpen(false)} className={`${item} text-ink hover:bg-paper`}>{I(<><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></>)} Help &amp; guides</a>
-        <a href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Edumod bug report")}`} onClick={() => setOpen(false)} className={`${item} text-[#b3261e] hover:bg-[#fdeeee]`}>{I(<><path d="m8 2 1.88 1.88M14.12 3.88 16 2M9 7.13v-1a3.003 3.003 0 1 1 6 0v1" /><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6zM12 20v-9M6.53 9C4.6 8.8 3 7.1 3 5M6 13H2M3 21c0-2.1 1.7-3.9 3.8-4M20.97 5c0 2.1-1.6 3.8-3.5 4M22 13h-4M17.2 17c2.1.1 3.8 1.9 3.8 4" /></>)} Report a problem</a>
+        <a href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Edumod bug report")}`} onClick={() => setOpen(false)} className={`${item} text-danger hover:bg-danger-soft`}>{I(<><path d="m8 2 1.88 1.88M14.12 3.88 16 2M9 7.13v-1a3.003 3.003 0 1 1 6 0v1" /><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6zM12 20v-9M6.53 9C4.6 8.8 3 7.1 3 5M6 13H2M3 21c0-2.1 1.7-3.9 3.8-4M20.97 5c0 2.1-1.6 3.8-3.5 4M22 13h-4M17.2 17c2.1.1 3.8 1.9 3.8 4" /></>)} Report a problem</a>
       </div></>}
     </div>
   );
@@ -212,7 +229,7 @@ function UserMenu({ userName, onSettings, onLogout }: { userName: string; onSett
       </button>
       {open && <><div className="fixed inset-0 z-40" onClick={() => setOpen(false)} /><div className="absolute right-0 top-12 z-50 w-48 rounded-xl border border-border-soft bg-white p-1.5 shadow-[0_20px_50px_rgba(16,33,63,.16)] motion-safe:animate-[fade-up_.2s_ease]">
         <button onClick={() => { setOpen(false); onSettings(); }} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12px] font-bold text-ink transition hover:bg-paper">{I(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>)} Settings</button>
-        <button onClick={() => { setOpen(false); onLogout(); }} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12px] font-bold text-[#b3261e] transition hover:bg-[#fdeeee]">{I(<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></>)} Sign out</button>
+        <button onClick={() => { setOpen(false); onLogout(); }} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12px] font-bold text-danger transition hover:bg-danger-soft">{I(<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></>)} Sign out</button>
       </div></>}
     </div>
   );
@@ -331,7 +348,7 @@ function WelcomeBanner({ userName, school, onSchoolChange }: { userName: string;
                   {terms.map((t) => (
                     <div key={t.term} className={`group flex items-center gap-1 rounded-lg pr-1 ${t.current ? "bg-brand-soft" : "hover:bg-paper"}`}>
                       <button onClick={() => pick(t.session, t.term)} className={`flex flex-1 items-center justify-between rounded-lg px-2.5 py-2 text-left text-[12px] font-bold ${t.current ? "text-brand-blue" : "text-ink"}`}>{t.term}{t.current && <span>✓</span>}</button>
-                      {!t.current && <button onClick={() => remove(t.session, t.term)} title="Remove" className="hidden size-6 shrink-0 place-items-center rounded text-ink-soft transition hover:bg-[#fdeeee] hover:text-[#b3261e] group-hover:grid">✕</button>}
+                      {!t.current && <button onClick={() => remove(t.session, t.term)} title="Remove" className="hidden size-6 shrink-0 place-items-center rounded text-ink-soft transition hover:bg-danger-soft hover:text-danger group-hover:grid">✕</button>}
                     </div>
                   ))}
                 </div>
@@ -347,7 +364,7 @@ function WelcomeBanner({ userName, school, onSchoolChange }: { userName: string;
                 <button onClick={() => { setAdding(true); setNewSession(school.currentSession); setNewTerm(""); }} className="flex w-full items-center gap-1.5 rounded-lg px-2.5 py-2 text-left text-[12px] font-extrabold text-brand-blue hover:bg-brand-soft">＋ New session / term</button>
               )}
             </div>
-            {err && <p className="px-2 py-1 text-[11px] font-bold text-[#b3261e]">{err}</p>}
+            {err && <p className="px-2 py-1 text-[11px] font-bold text-danger">{err}</p>}
           </div></>}
         </div>
       </div>
@@ -373,7 +390,7 @@ function StatCard({ label, value, icon, color, meta, trend, onClick }: StatCardP
           <strong className="block break-words font-display text-[clamp(19px,5vw,25px)] font-bold leading-none" style={{ color }}>{value}</strong>
           <small className="mt-1.5 block font-bold text-ink">{label}</small>
           <div className="mt-1 flex items-center gap-1.5 text-[10px] font-extrabold">
-            {trend && <span className={trend.up ? "text-brand-green" : "text-[#b3261e]"}>{trend.up ? "↑" : "↓"} {trend.pct}</span>}
+            {trend && <span className={trend.up ? "text-brand-green" : "text-danger"}>{trend.up ? "↑" : "↓"} {trend.pct}</span>}
             <span className="text-ink-soft">{trend ? trend.note : meta}</span>
           </div>
         </div>
@@ -496,10 +513,12 @@ function Overview({ userName, school, students, staff, audit, overview, goto, on
 }
 
 /* ---------- Students ---------- */
-function Students({ students, openStudentId, onConsumed }: { students: Student[]; openStudentId?: string | null; onConsumed?: () => void }) {
-  const [showAdd, setShowAdd] = useState(false);
-  const [showLogins, setShowLogins] = useState(false);
-  const [showClasses, setShowClasses] = useState(false);
+function Students({ students, openStudentId, onConsumed, section, onSection }: { students: Student[]; openStudentId?: string | null; onConsumed?: () => void; section: StudentsSection | null; onSection: (s: StudentsSection | null) => void }) {
+  // Which panel is open is driven by the sidebar "Classes" dropdown (and the header buttons mirror it).
+  const showClasses = section === "classes";
+  const showLogins = section === "logins";
+  const showAdd = section === "add";
+  const showPromote = section === "promote";
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const router = useRouter();
@@ -517,11 +536,12 @@ function Students({ students, openStudentId, onConsumed }: { students: Student[]
   if (selected) return <StudentProfilePage studentId={selected} onBack={() => setSelected(null)} onChanged={() => router.refresh()} />;
   return (
     <>
-      <Head title="Classes" subtitle={`${students.length.toLocaleString()} student${students.length === 1 ? "" : "s"} enrolled`} action={<div className="flex flex-wrap gap-2"><button onClick={() => { setShowClasses((s) => !s); setShowAdd(false); setShowLogins(false); }} className="inline-flex min-h-9 items-center gap-1.5 rounded-[10px] border border-border-soft bg-white px-3.5 text-[13px] font-extrabold text-ink-soft transition hover:border-brand-blue hover:text-brand-blue">🏫 {showClasses ? "Close" : "Manage classes"}</button><button onClick={() => { setShowLogins((s) => !s); setShowAdd(false); setShowClasses(false); }} className="inline-flex min-h-9 items-center gap-1.5 rounded-[10px] border border-border-soft bg-white px-3.5 text-[13px] font-extrabold text-ink-soft transition hover:border-brand-blue hover:text-brand-blue">🔑 {showLogins ? "Close" : "Logins"}</button><PrimaryBtn onClick={() => { setShowAdd((s) => !s); setShowLogins(false); setShowClasses(false); }}>{showAdd ? I(<><path d="M18 6 6 18M6 6l12 12" /></>) : I(<><path d="M12 5v14M5 12h14" /></>)}{showAdd ? "Close" : "Add student"}</PrimaryBtn></div>} />
+      <Head title="Classes" subtitle={`${students.length.toLocaleString()} student${students.length === 1 ? "" : "s"} enrolled`} action={<div className="flex flex-wrap gap-2"><button onClick={() => onSection(showClasses ? null : "classes")} className="inline-flex min-h-9 items-center gap-1.5 rounded-[10px] border border-border-soft bg-white px-3.5 text-[13px] font-extrabold text-ink-soft transition hover:border-brand-blue hover:text-brand-blue">🏫 {showClasses ? "Close" : "Manage classes"}</button><button onClick={() => onSection(showLogins ? null : "logins")} className="inline-flex min-h-9 items-center gap-1.5 rounded-[10px] border border-border-soft bg-white px-3.5 text-[13px] font-extrabold text-ink-soft transition hover:border-brand-blue hover:text-brand-blue">🔑 {showLogins ? "Close" : "Logins"}</button><PrimaryBtn onClick={() => onSection(showAdd ? null : "add")}>{showAdd ? I(<><path d="M18 6 6 18M6 6l12 12" /></>) : I(<><path d="M12 5v14M5 12h14" /></>)}{showAdd ? "Close" : "Add student"}</PrimaryBtn></div>} />
       {showClasses && <div className="mb-[18px]"><ClassManager /></div>}
       {showAdd && <div className="mb-[18px]"><Card title="Add a student"><div className="grid gap-[18px] sm:grid-cols-2"><AddStudentForm /><div className="border-t border-border-soft pt-4 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0"><p className="mb-3 text-[12px] font-extrabold text-ink">Reset a student&rsquo;s password</p><ResetStudentPasswordForm /></div></div></Card></div>}
       {showLogins && <div className="mb-[18px]"><Card title="Student logins"><StudentCredentials students={students} /></Card></div>}
-      <Card>
+      {showPromote && <div className="mb-[18px]"><PromotionScreen /></div>}
+      {!showPromote && <Card>
         <div className="mb-4 flex flex-col gap-2.5 sm:flex-row sm:items-center">
           <div className="flex flex-1 items-center gap-2 rounded-[10px] border border-border-soft bg-paper/60 px-3"><span className="text-ink-soft">{I(<><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></>)}</span><input value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} placeholder="Search students…" className="min-h-9 flex-1 bg-transparent text-[13px] outline-none" /></div>
           <FilterSelect value={classF} onChange={(v) => { setClassF(v); setPage(1); }} options={classOpts.map((c) => ({ v: c, label: c === "all" ? "All classes" : c }))} />
@@ -541,7 +561,7 @@ function Students({ students, openStudentId, onConsumed }: { students: Student[]
           </div>
         )}
         {filtered.length > 0 && <div className="mt-4 flex flex-col items-center justify-between gap-2 text-[12px] text-ink-soft sm:flex-row"><span>Showing {(cur - 1) * per + 1} to {Math.min(cur * per, filtered.length)} of {filtered.length}</span><div className="flex gap-1"><PageBtn disabled={cur === 1} onClick={() => setPage(cur - 1)}>‹</PageBtn>{Array.from({ length: pages }, (_, i) => i + 1).slice(Math.max(0, cur - 2), Math.max(0, cur - 2) + 4).map((n) => <PageBtn key={n} active={n === cur} onClick={() => setPage(n)}>{String(n)}</PageBtn>)}<PageBtn disabled={cur === pages} onClick={() => setPage(cur + 1)}>›</PageBtn></div></div>}
-      </Card>
+      </Card>}
     </>
   );
 }
@@ -553,7 +573,7 @@ function PageBtn({ children, active, disabled, onClick }: { children: string; ac
 const ROLE_LABEL: Record<string, string> = { school_admin: "Admin", principal: "Principal", vice_principal: "Vice principal", teacher: "Teacher", bursar: "Bursar" };
 const rank: Record<Level, number> = { none: 0, view: 1, edit: 2, approve: 3, full: 4 };
 function StaffStatusBadge({ status }: { status: string }) {
-  const map: Record<string, [string, string]> = { active: ["Active", "bg-brand-green/10 text-brand-green"], pending: ["Pending", "bg-brand-soft text-brand-blue"], inactive: ["Inactive", "bg-paper text-ink-soft"], left: ["Left school", "bg-[#fdeeee] text-[#b3261e]"] };
+  const map: Record<string, [string, string]> = { active: ["Active", "bg-brand-green/10 text-brand-green"], pending: ["Pending", "bg-brand-soft text-brand-blue"], inactive: ["Inactive", "bg-paper text-ink-soft"], left: ["Left school", "bg-danger-soft text-danger"] };
   const [label, cls] = map[status] ?? map.active;
   return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-extrabold ${cls}`}>{label}</span>;
 }
@@ -568,8 +588,8 @@ function StaffActions({ staff, onDone, onErr }: { staff: Staff; onDone: () => vo
       <div className="flex flex-wrap gap-2">
         {staff.status !== "active" && <button onClick={() => set("active")} disabled={busy} className={`${btn} border-brand-green/30 bg-brand-green/10 text-brand-green hover:bg-brand-green/20`}>Set active</button>}
         {staff.status !== "inactive" && <button onClick={() => set("inactive")} disabled={busy} className={`${btn} border-border-soft bg-white text-ink-soft hover:border-brand-blue`}>Set inactive</button>}
-        {staff.status !== "left" && <button onClick={() => set("left")} disabled={busy} className={`${btn} border-[#f0d3a8] bg-[#fdf6e9] text-[#b9540f] hover:bg-[#fbeede]`}>Mark as left</button>}
-        <button onClick={remove} disabled={busy} className={`${btn} border-[#f3c2c2] bg-[#fdeeee] text-[#b3261e] hover:bg-[#fbe3e3]`}>Remove</button>
+        {staff.status !== "left" && <button onClick={() => set("left")} disabled={busy} className={`${btn} border-warn-line bg-warn-soft text-warn hover:bg-[#fbeede]`}>Mark as left</button>}
+        <button onClick={remove} disabled={busy} className={`${btn} border-danger-line bg-danger-soft text-danger hover:bg-danger-soft`}>Remove</button>
       </div>
     </div>
   );
@@ -623,7 +643,7 @@ function StaffView({ staff }: { staff: Staff[] }) {
         <div className="flex items-center gap-3.5"><Avatar name={selected.name} size={56} /><div><div className="font-display text-[17px] font-semibold">{selected.name}</div><div className="text-[12px] text-ink-soft">{selected.email}</div><div className="mt-0.5"><StaffStatusBadge status={selected.status} /></div></div></div>
         <dl className="mt-5 grid gap-0">{[["Staff ID", selected.staffNo ?? "-"], ["Role", ROLE_LABEL[selected.role] ?? selected.role], ["Type", selected.teacherType], ["Assigned class", selected.assignedClass ?? "-"], ["Subjects", selected.subjects.join(", ") || "-"], ["Approve payments", selected.canApprove ? "Yes" : "No"]].map(([k, v]) => <div key={k} className="flex justify-between gap-4 border-b border-border-soft py-2.5 last:border-0"><dt className="text-[12px] font-bold text-ink-soft">{k}</dt><dd className="max-w-[60%] text-right text-[12px] font-bold text-ink">{k === "Staff ID" && v !== "-" ? <code className="select-all text-brand-blue">{v}</code> : v}</dd></div>)}</dl>
         {selected.role !== "school_admin" && <StaffActions staff={selected} onDone={() => { setSelected(null); router.refresh(); }} onErr={setStaffErr} />}
-        {staffErr && <p className="mt-2 text-[12px] font-bold text-[#b3261e]">{staffErr}</p>}
+        {staffErr && <p className="mt-2 text-[12px] font-bold text-danger">{staffErr}</p>}
         <h3 className="mb-2 mt-6 font-display text-[15px] font-semibold">Permissions</h3>
         <div className="overflow-x-auto"><table className="w-full text-left text-[11px]"><thead><tr className="text-[9px] uppercase tracking-wide text-ink-soft"><th className="py-1.5">Area</th>{LEVELS.map((l) => <th key={l.key} className="py-1.5 text-center font-bold">{l.label}</th>)}</tr></thead><tbody>{AREAS.map((a) => { const lvl = (selected.permissions[a] ?? "none") as Level; return <tr key={a} className="border-t border-border-soft"><td className="py-2 font-bold text-ink">{AREA_LABELS[a]}</td>{LEVELS.map((l) => <td key={l.key} className="py-2 text-center">{lvl !== "none" && rank[lvl] >= rank[l.key] ? <span className="text-brand-green">✓</span> : <span className="text-[#cdd7e6]">-</span>}</td>)}</tr>; })}</tbody></table></div>
         <p className="mt-4 rounded-lg bg-brand-soft/60 p-2.5 text-[10px] leading-relaxed text-ink-soft">Permissions are suggested from the role and responsibilities, then adjusted if needed.</p>
@@ -668,8 +688,8 @@ function Settings({ school, logo, onLogo, onSaved }: { school: School; logo: str
           <div className="grid place-items-center gap-4 py-2">
             <div className="grid size-32 place-items-center overflow-hidden rounded-2xl border border-border-soft bg-paper">{logo ? <img src={logo} alt="School logo" className="size-full object-cover" /> : <span className="font-display text-[40px] font-bold text-brand-blue">{school.name.slice(0, 1)}</span>}</div>
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); }} />
-            <div className="flex gap-2"><button disabled={logoBusy} onClick={() => fileRef.current?.click()} className="inline-flex min-h-9 items-center rounded-[10px] bg-brand-blue px-3.5 text-[12px] font-extrabold text-white transition hover:bg-brand-dark disabled:opacity-70">{logoBusy ? "Working…" : "Change logo"}</button>{logo && <button disabled={logoBusy} onClick={removeLogo} className="inline-flex min-h-9 items-center rounded-[10px] border border-[#f3c2c2] bg-[#fdeeee] px-3.5 text-[12px] font-extrabold text-[#b3261e] transition hover:bg-[#fbe3e3]">Remove</button>}</div>
-            {logoMsg && <p className="text-[11px] font-bold text-[#b3261e]">{logoMsg}</p>}
+            <div className="flex gap-2"><button disabled={logoBusy} onClick={() => fileRef.current?.click()} className="inline-flex min-h-9 items-center rounded-[10px] bg-brand-blue px-3.5 text-[12px] font-extrabold text-white transition hover:bg-brand-dark disabled:opacity-70">{logoBusy ? "Working…" : "Change logo"}</button>{logo && <button disabled={logoBusy} onClick={removeLogo} className="inline-flex min-h-9 items-center rounded-[10px] border border-danger-line bg-danger-soft px-3.5 text-[12px] font-extrabold text-danger transition hover:bg-danger-soft">Remove</button>}</div>
+            {logoMsg && <p className="text-[11px] font-bold text-danger">{logoMsg}</p>}
             <div className="text-center text-[10px] text-ink-soft">PNG or JPG, max 2MB.<br />School code: <code className="select-all font-bold text-brand-blue">{school.schoolCode}</code></div>
           </div>
         </Card>
@@ -697,7 +717,7 @@ function Settings({ school, logo, onLogo, onSaved }: { school: School; logo: str
               <label className="grid gap-1.5"><span className="text-[11px] font-extrabold text-ink">Day ends at</span><input type="time" name="dayEndsAt" defaultValue={school.dayEndsAt ?? ""} className="min-h-10 rounded-[10px] border border-border-soft bg-paper/60 px-3 text-[13px] text-ink outline-none focus:border-brand-blue focus:bg-white" /></label>
             </div>
           </div>
-          <div className="flex items-center gap-3"><button type="submit" disabled={busy} className="inline-flex min-h-10 items-center gap-1.5 rounded-[10px] bg-brand-blue px-5 text-[13px] font-extrabold text-white transition hover:-translate-y-0.5 hover:bg-brand-dark disabled:opacity-70">{busy ? "Saving…" : "Save changes"}</button>{msg?.ok && <span className="text-[12px] font-bold text-brand-green">Saved ✓</span>}{msg?.error && <span className="text-[12px] font-bold text-[#b3261e]">{msg.error}</span>}</div>
+          <div className="flex items-center gap-3"><button type="submit" disabled={busy} className="inline-flex min-h-10 items-center gap-1.5 rounded-[10px] bg-brand-blue px-5 text-[13px] font-extrabold text-white transition hover:-translate-y-0.5 hover:bg-brand-dark disabled:opacity-70">{busy ? "Saving…" : "Save changes"}</button>{msg?.ok && <span className="text-[12px] font-bold text-brand-green">Saved ✓</span>}{msg?.error && <span className="text-[12px] font-bold text-danger">{msg.error}</span>}</div>
         </form>
         </Card>
       </div>
@@ -735,7 +755,7 @@ function AuditRow({ a }: { a: Audit }) {
         <div className="border-t border-border-soft bg-paper/40 px-3.5 py-3">
           <div className="mb-2 grid gap-1 text-[11px] sm:grid-cols-2"><div><span className="font-bold text-ink-soft">Changed by</span> <span className="font-bold text-ink">{by}</span></div><div><span className="font-bold text-ink-soft">Module</span> <span className="font-bold text-ink">{a.entityType}</span></div></div>
           <div className="overflow-x-auto rounded-lg border border-border-soft bg-white"><table className="w-full min-w-[360px] text-left text-[11px]"><thead><tr className="border-b border-border-soft text-[9px] uppercase tracking-wide text-ink-soft"><th className="px-2.5 py-1.5 font-bold">Field</th><th className="px-2.5 py-1.5 font-bold">Old value</th><th className="px-2.5 py-1.5 font-bold">New value</th></tr></thead>
-            <tbody>{changes.map((ch, j) => <tr key={j} className="border-b border-border-soft last:border-0"><td className="px-2.5 py-1.5 font-bold capitalize text-ink">{ch.field}</td><td className="px-2.5 py-1.5 text-ink-soft line-through decoration-[#b3261e]/40">{ch.old}</td><td className="px-2.5 py-1.5 font-bold text-brand-green">{ch.new}</td></tr>)}</tbody></table></div>
+            <tbody>{changes.map((ch, j) => <tr key={j} className="border-b border-border-soft last:border-0"><td className="px-2.5 py-1.5 font-bold capitalize text-ink">{ch.field}</td><td className="px-2.5 py-1.5 text-ink-soft line-through decoration-danger/40">{ch.old}</td><td className="px-2.5 py-1.5 font-bold text-brand-green">{ch.new}</td></tr>)}</tbody></table></div>
         </div>
       )}
     </div>

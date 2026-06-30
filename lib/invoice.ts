@@ -7,6 +7,7 @@ import { feeStructures, invoices, payments, students } from "@/db/schema";
 export type InvoiceLine = { id: string; description: string; amount: number; mandatory: boolean; paid: number; outstanding: number };
 export type InvoiceBill = {
   id: string;
+  studentId: string;
   no: string;
   billName: string | null;
   termLabel: string | null;
@@ -66,7 +67,7 @@ function buildBills(rows: BillRow[], paidMap: Map<string, number>): InvoiceBill[
     });
     const total = lines.reduce((n, l) => n + l.amount, 0);
     const paid = lines.reduce((n, l) => n + l.paid, 0);
-    bills.push({ id: head.id, no: invNo(head.id), billName: head.feeName, termLabel: head.termLabel, createdAt: head.createdAt, dueDate: head.dueDate, studentName: `${head.sf} ${head.sl}`.trim(), admissionNo: head.admissionNo, className: head.className, lines, total, paid, outstanding: Math.max(0, total - paid), hasBreakdown: lines.length > 1 });
+    bills.push({ id: head.id, studentId: head.studentId, no: invNo(head.id), billName: head.feeName, termLabel: head.termLabel, createdAt: head.createdAt, dueDate: head.dueDate, studentName: `${head.sf} ${head.sl}`.trim(), admissionNo: head.admissionNo, className: head.className, lines, total, paid, outstanding: Math.max(0, total - paid), hasBreakdown: lines.length > 1 });
   }
   return bills;
 }

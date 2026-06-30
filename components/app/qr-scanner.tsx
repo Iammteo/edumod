@@ -59,7 +59,7 @@ export function QrScanModal({ onToken, onClose }: { onToken: (token: string) => 
           <div className="pointer-events-none absolute inset-6 rounded-xl border-2 border-white/80" />
         </div>
         <canvas ref={canvasRef} className="hidden" />
-        {err ? <p className="mt-3 text-[12px] font-bold text-[#b3261e]">{err}</p> : <p className="mt-3 text-[12px] text-ink-soft">Point your camera at the rotating code on the staff terminal.</p>}
+        {err ? <p className="mt-3 text-[12px] font-bold text-danger">{err}</p> : <p className="mt-3 text-[12px] text-ink-soft">Point your camera at the rotating code on the staff terminal.</p>}
       </div>
     </div>
   );

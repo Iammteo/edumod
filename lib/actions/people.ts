@@ -15,6 +15,7 @@ import { composeUsername, normalizeIdentifier } from "@/lib/identity/student-id"
 import { generateStaffId } from "@/lib/identity/staff-id";
 import { isLockedOut, recordFailure, clearFailures } from "@/lib/rate-limit";
 import { getOrCreateDeviceId, evaluateStaffDevice } from "@/lib/device-trust";
+import { encryptSecret } from "@/lib/crypto";
 import { sendSchoolCodeEmail, sendEmail } from "@/lib/email";
 
 // Better Auth's password hasher (internal) - used so directly-inserted credential rows verify
@@ -200,7 +201,7 @@ export async function createStudent(input: { name: string; className?: string })
       const usernameValue = composeUsername(ctx.school!.schoolCode!, no);
       await tx.insert(users).values({ id: userId, name, email: null, emailVerified: false, accountType: "student", username: usernameValue, displayUsername: usernameValue, createdAt: now, updatedAt: now });
       await tx.insert(accounts).values({ id: randomUUID(), accountId: userId, providerId: "credential", userId, password: hash, createdAt: now, updatedAt: now });
-      await tx.insert(students).values({ schoolId: ctx.schoolId!, admissionNo: no, firstName, lastName, className, userId });
+      await tx.insert(students).values({ schoolId: ctx.schoolId!, admissionNo: no, firstName, lastName, className, userId, credentialEnc: encryptSecret(password) });
       await tx.insert(memberships).values({ schoolId: ctx.schoolId!, userId, role: "student" });
       return no;
     });
@@ -222,6 +223,7 @@ export async function resetStudentPassword(input: { studentId: string }): Promis
   try {
     const hash = await hashPassword(password);
     await db.update(accounts).set({ password: hash, updatedAt: new Date() }).where(and(eq(accounts.userId, student.userId), eq(accounts.providerId, "credential")));
+    await db.update(students).set({ credentialEnc: encryptSecret(password), updatedAt: new Date() }).where(eq(students.id, student.id));
     await logAudit({ schoolId: ctx.schoolId, actorUserId: ctx.userId, action: "student.password_reset", entityType: "Student", entityId: student.userId, metadata: { name: `${student.firstName} ${student.lastName}`.trim() } });
     return { ok: true, studentName: `${student.firstName} ${student.lastName}`.trim(), password };
   } catch {

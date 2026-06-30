@@ -40,10 +40,11 @@ export async function deviceStatus(userId: string, deviceId: string): Promise<De
   return (row?.status as DeviceStatus) ?? "new";
 }
 
-// Record a first-seen device as pending (no-op if it already exists), and stamp lastSeen.
+// Record a device as pending for approval. If a row already exists (e.g. it was revoked/rejected),
+// flip it back to pending and clear any prior approval so it re-enters the admin's queue.
 export async function recordPendingDevice(schoolId: string, userId: string, deviceId: string, label: string): Promise<void> {
   await db.insert(trustedDevices).values({ schoolId, userId, deviceId, label, status: "pending", lastSeenAt: new Date() })
-    .onConflictDoUpdate({ target: [trustedDevices.userId, trustedDevices.deviceId], set: { lastSeenAt: new Date() } });
+    .onConflictDoUpdate({ target: [trustedDevices.userId, trustedDevices.deviceId], set: { status: "pending", approvedByUserId: null, approvedAt: null, lastSeenAt: new Date() } });
 }
 
 // Mark a device approved (used for the auto-trusted first device at invite acceptance).
@@ -73,7 +74,11 @@ export async function evaluateStaffDevice(userId: string, deviceId: string): Pro
   const status = await deviceStatus(userId, deviceId);
   if (status === "approved") { await touchDevice(userId, deviceId); return { allow: true }; }
   if (status === "pending") return { allow: false, message: "This device is waiting for admin approval. You can sign in once it's approved." };
-  if (status === "revoked") return { allow: false, message: "This device's access was revoked. Ask your admin to approve it again." };
+  // A previously rejected/revoked device can ask again: re-queue it so an admin can reconsider.
+  if (status === "revoked") {
+    await recordPendingDevice(m.schoolId, userId, deviceId, await deviceLabel());
+    return { allow: false, message: "This device was rejected before. We've sent your admin a fresh approval request - try again once they approve it." };
+  }
   if (await userHasAnyDevice(userId)) {
     await recordPendingDevice(m.schoolId, userId, deviceId, await deviceLabel());
     return { allow: false, message: "New device detected. We've asked your admin to approve it - try again once they do." };

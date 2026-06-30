@@ -10,6 +10,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { feeStructures, invoices, memberships, payments, schools, students, users } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
+import { sendEmail } from "@/lib/email";
 import { billStatus, loadInvoiceBillsByFilter, EXPORT_CAP } from "@/lib/invoice";
 import { loadReceiptReport, RECEIPT_EXPORT_CAP, type ReceiptReportRow } from "@/lib/receipt";
 
@@ -29,14 +30,14 @@ async function ctx() {
   return { userId: session.user.id, schoolId: m.schoolId, role: m.role, canRecord: FINANCE_ROLES.includes(m.role), canApprove: m.role === "school_admin" || m.canApprovePayments, requireApproval: !!school?.requireApproval };
 }
 
-export type Payment = { id: string; student: string; admissionNo: string; amount: number; method: string; status: string; recordedBy: string; approver: string | null; mine: boolean; date: string; description: string | null; proofKey: string | null; receiptKey: string | null };
+export type Payment = { id: string; student: string; studentId: string; admissionNo: string; className: string | null; amount: number; method: string; status: string; recordedBy: string; approver: string | null; mine: boolean; date: string; recordedAt: string; description: string | null; invoiceId: string | null; proofKey: string | null; receiptKey: string | null };
 export type FeeItem = { name: string; amount: number; mandatory: boolean };
 export type Fee = { id: string; name: string; termLabel: string | null; amount: number; classes: string[]; items: FeeItem[] };
 export type InvoiceRow = { id: string; no: string; studentId: string; student: string; admissionNo: string; description: string; amount: number; paid: number; outstanding: number; status: string; date: string; mandatory: boolean };
 export type OpenInvoice = { id: string; studentId: string; no: string; description: string; amount: number; outstanding: number };
 export type ReceiptRow = { id: string; no: string; student: string; amount: number; method: string; date: string; token: string | null };
 export type ClassCount = { className: string; count: number };
-export type Student = { id: string; name: string; admissionNo: string; className: string | null };
+export type Student = { id: string; name: string; admissionNo: string; className: string | null; guardian: string | null; phone: string | null; photoKey: string | null };
 export type FinanceData = {
   stats: { collected: number; outstanding: number; outstandingCount: number; pending: number; pendingCount: number; thisMonth: number; receiptsIssued: number };
   payments: Payment[];
@@ -68,10 +69,10 @@ export async function getFinanceData(): Promise<FinanceData | { error: string }>
   const recorder = users;
   const approver = alias(users, "approver");
   const [rows, studentRows, feeRows, invoiceRows, paidRows, classRows, invByClass, paidByClass] = await Promise.all([
-    db.select({ id: payments.id, amount: payments.amount, method: payments.method, status: payments.status, description: payments.description, createdAt: payments.createdAt, recordedByUserId: payments.recordedByUserId, proofKey: payments.proofKey, receiptKey: payments.receiptKey, sf: students.firstName, sl: students.lastName, admissionNo: students.admissionNo, recordedBy: recorder.name, approverName: approver.name })
+    db.select({ id: payments.id, studentId: payments.studentId, amount: payments.amount, method: payments.method, status: payments.status, description: payments.description, createdAt: payments.createdAt, invoiceId: payments.invoiceId, recordedByUserId: payments.recordedByUserId, proofKey: payments.proofKey, receiptKey: payments.receiptKey, sf: students.firstName, sl: students.lastName, admissionNo: students.admissionNo, className: students.className, recordedBy: recorder.name, approverName: approver.name })
       .from(payments).innerJoin(students, eq(students.id, payments.studentId)).leftJoin(recorder, eq(recorder.id, payments.recordedByUserId)).leftJoin(approver, eq(approver.id, payments.approvedByUserId))
       .where(eq(payments.schoolId, c.schoolId)).orderBy(desc(payments.createdAt)).limit(100),
-    db.select({ id: students.id, firstName: students.firstName, lastName: students.lastName, admissionNo: students.admissionNo, className: students.className }).from(students).where(eq(students.schoolId, c.schoolId)).orderBy(desc(students.createdAt)).limit(500),
+    db.select({ id: students.id, firstName: students.firstName, lastName: students.lastName, admissionNo: students.admissionNo, className: students.className, guardianPhone: students.guardianPhone, photoKey: students.photoKey, profile: students.profile }).from(students).where(eq(students.schoolId, c.schoolId)).orderBy(desc(students.createdAt)).limit(500),
     db.select().from(feeStructures).where(eq(feeStructures.schoolId, c.schoolId)).orderBy(desc(feeStructures.createdAt)),
     db.select({ id: invoices.id, studentId: invoices.studentId, description: invoices.description, amount: invoices.amount, mandatory: invoices.mandatory, createdAt: invoices.createdAt, sf: students.firstName, sl: students.lastName, admissionNo: students.admissionNo })
       .from(invoices).innerJoin(students, eq(students.id, invoices.studentId)).where(eq(invoices.schoolId, c.schoolId)).orderBy(desc(invoices.createdAt)).limit(500),
@@ -87,7 +88,7 @@ export async function getFinanceData(): Promise<FinanceData | { error: string }>
     const amt = Number(r.amount);
     if (r.status === "approved") { collected += amt; receiptsIssued += 1; if (new Date(r.createdAt) >= monthStart) thisMonth += amt; }
     if (r.status === "pending_approval") { pending += amt; pendingCount += 1; }
-    return { id: r.id, student: `${r.sf} ${r.sl}`.trim(), admissionNo: r.admissionNo, amount: amt, method: r.method, status: r.status, recordedBy: r.recordedBy ?? "-", approver: r.status === "approved" ? r.approverName ?? null : null, mine: r.recordedByUserId === c.userId, date: new Date(r.createdAt).toLocaleDateString(), description: r.description, proofKey: r.proofKey, receiptKey: r.receiptKey };
+    return { id: r.id, studentId: r.studentId, student: `${r.sf} ${r.sl}`.trim(), admissionNo: r.admissionNo, className: r.className, amount: amt, method: r.method, status: r.status, recordedBy: r.recordedBy ?? "-", approver: r.status === "approved" ? r.approverName ?? null : null, mine: r.recordedByUserId === c.userId, date: new Date(r.createdAt).toLocaleDateString(), recordedAt: new Date(r.createdAt).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }), description: r.description, invoiceId: r.invoiceId, proofKey: r.proofKey, receiptKey: r.receiptKey };
   });
 
   // Per-invoice reconciliation: how much approved money has been applied to each invoice.
@@ -126,7 +127,7 @@ export async function getFinanceData(): Promise<FinanceData | { error: string }>
     stats: { collected, outstanding, outstandingCount, pending, pendingCount, thisMonth, receiptsIssued },
     payments: list,
     fees: feeRows.map((f) => ({ id: f.id, name: f.name, termLabel: f.termLabel, amount: Number(f.amount), classes: Array.isArray(f.classes) ? (f.classes as string[]) : [], items: Array.isArray(f.items) ? (f.items as FeeItem[]) : [] })),
-    students: studentRows.map((s) => ({ id: s.id, name: `${s.firstName} ${s.lastName}`.trim(), admissionNo: s.admissionNo, className: s.className })),
+    students: studentRows.map((s) => { const g = ((s.profile as { guardian1?: { name?: string; phone?: string }; guardian?: { name?: string; phone?: string } } | null) ?? {}); const guardian = g.guardian1?.name || g.guardian?.name || null; return { id: s.id, name: `${s.firstName} ${s.lastName}`.trim(), admissionNo: s.admissionNo, className: s.className, guardian, phone: s.guardianPhone || g.guardian1?.phone || null, photoKey: s.photoKey }; }),
     invoices: invoiceList.slice(0, 12),
     openInvoices,
     receipts,
@@ -139,14 +140,14 @@ export async function getFinanceData(): Promise<FinanceData | { error: string }>
 }
 
 // ---------------------------------------------------------------------------- Reports & exports
-export type InvoiceReportRow = { id: string; no: string; student: string; className: string | null; billName: string | null; termLabel: string | null; total: number; paid: number; outstanding: number; status: string };
+export type InvoiceReportRow = { id: string; studentId: string; no: string; student: string; className: string | null; billName: string | null; termLabel: string | null; total: number; paid: number; outstanding: number; status: string };
 // Filtered invoice report (by class / term / status) backing the Reports & exports section and its
 // print/download. Any finance-viewing member can run it.
 export async function getInvoiceReport(filter: { className?: string; termLabel?: string; status?: string }): Promise<{ rows: InvoiceReportRow[]; matched: number; cap: number } | { error: string }> {
   const c = await ctx();
   if (!c) return { error: "Not authorised." };
   const { bills, matched } = await loadInvoiceBillsByFilter(c.schoolId, filter);
-  const rows: InvoiceReportRow[] = bills.map((b) => ({ id: b.id, no: b.no, student: b.studentName, className: b.className, billName: b.billName, termLabel: b.termLabel, total: b.total, paid: b.paid, outstanding: b.outstanding, status: billStatus(b) }));
+  const rows: InvoiceReportRow[] = bills.map((b) => ({ id: b.id, studentId: b.studentId, no: b.no, student: b.studentName, className: b.className, billName: b.billName, termLabel: b.termLabel, total: b.total, paid: b.paid, outstanding: b.outstanding, status: billStatus(b) }));
   return { rows, matched, cap: EXPORT_CAP };
 }
 
@@ -156,6 +157,23 @@ export async function getReceiptReport(filter: { className?: string; termLabel?:
   if (!c) return { error: "Not authorised." };
   const { rows, matched } = await loadReceiptReport(c.schoolId, filter);
   return { rows, matched, cap: RECEIPT_EXPORT_CAP };
+}
+
+// Emails the student's guardian an outstanding-balance reminder for an invoice.
+export async function sendInvoiceReminder(invoiceId: string): Promise<{ ok: true } | { error: string }> {
+  const c = await ctx();
+  if (!c) return { error: "Not authorised." };
+  const [inv] = await db.select({ amount: invoices.amount, description: invoices.description, sf: students.firstName, sl: students.lastName, gEmail: students.guardianEmail, profile: students.profile })
+    .from(invoices).innerJoin(students, eq(students.id, invoices.studentId)).where(and(eq(invoices.id, invoiceId), eq(invoices.schoolId, c.schoolId))).limit(1);
+  if (!inv) return { error: "Invoice not found." };
+  const email = inv.gEmail || ((inv.profile as { guardian1?: { email?: string } } | null) ?? {}).guardian1?.email || null;
+  if (!email) return { error: "No guardian email on file for this student." };
+  const [{ paid }] = await db.select({ paid: sql<string>`coalesce(sum(${payments.amount}),0)` }).from(payments).where(and(eq(payments.invoiceId, invoiceId), eq(payments.status, "approved")));
+  const outstanding = Math.max(0, Number(inv.amount) - Number(paid));
+  const [school] = await db.select({ name: schools.name }).from(schools).where(eq(schools.id, c.schoolId)).limit(1);
+  void sendEmail({ to: email, subject: `Fee reminder for ${inv.sf} ${inv.sl}`, text: `Dear Parent/Guardian,\n\nThis is a reminder that ${inv.sf} ${inv.sl} has an outstanding balance of ₦${outstanding.toLocaleString()} on "${inv.description || "school fees"}".\n\nPlease arrange payment at your earliest convenience.\n\nThank you,\n${school?.name ?? "Edumod"}` }).catch((e) => console.error("[email] invoice reminder failed:", e));
+  await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: "invoice.reminder_sent", entityType: "Invoice", entityId: invoiceId, metadata: { student: `${inv.sf} ${inv.sl}`.trim(), outstanding } });
+  return { ok: true };
 }
 
 // Creates a fee bill made of one or more line items (e.g. Tuition, Excursion, PTA), each marked
@@ -191,7 +209,7 @@ export async function createFeeStructure(input: { name: string; termLabel?: stri
 
 // Accepts a FormData so an optional proof-of-payment image (bank transfer screenshot / receipt)
 // can ride along with the fields. The proof is written under public/uploads and its path stored.
-export async function recordPayment(form: FormData): Promise<{ ok: true } | { error: string }> {
+export async function recordPayment(form: FormData): Promise<{ ok: true; approved: boolean } | { error: string }> {
   const c = await ctx();
   if (!c) return { error: "Not authorised." };
   if (!c.canRecord) return { error: "You don't have permission to record payments." };
@@ -223,10 +241,13 @@ export async function recordPayment(form: FormData): Promise<{ ok: true } | { er
     await writeFile(path.join(dir, name), Buffer.from(await proof.arrayBuffer()));
     proofKey = name;
   }
+  // With maker-checker off, a recorded payment is approved immediately (no separate Approvals step).
+  const autoApprove = !c.requireApproval;
   try {
-    const [row] = await db.insert(payments).values({ schoolId: c.schoolId, studentId, invoiceId, amount: amount.toFixed(2), method: method === "transfer" ? "transfer" : "cash", status: "pending_approval", description: description || null, recordedByUserId: c.userId, proofKey }).returning({ id: payments.id });
-    await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: "payment.recorded", entityType: "Payment", entityId: row?.id, metadata: { amount, method, ...(await studentLabel(studentId)) } });
-    return { ok: true };
+    const [row] = await db.insert(payments).values({ schoolId: c.schoolId, studentId, invoiceId, amount: amount.toFixed(2), method: method === "transfer" ? "transfer" : "cash", status: autoApprove ? "approved" : "pending_approval", description: description || null, recordedByUserId: c.userId, proofKey, ...(autoApprove ? { approvedByUserId: c.userId, approvedAt: new Date(), receiptKey: randomUUID() } : {}) }).returning({ id: payments.id });
+    if (autoApprove && invoiceId) await reconcileInvoice(invoiceId, c.schoolId);
+    await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: autoApprove ? "payment.approved" : "payment.recorded", entityType: "Payment", entityId: row?.id, metadata: { amount, method, ...(await studentLabel(studentId)) } });
+    return { ok: true, approved: autoApprove };
   } catch {
     return { error: "Could not record the payment. Please try again." };
   }
@@ -268,20 +289,26 @@ async function reconcileInvoice(invoiceId: string, schoolId: string) {
   await db.update(invoices).set({ status, updatedAt: new Date() }).where(eq(invoices.id, invoiceId));
 }
 
-export async function rejectPayment(id: string, reason: string): Promise<{ ok: true } | { error: string }> {
+// Maker-checker decisions. "Return" sends a payment back to the recorder to fix and resubmit;
+// "Decline" rejects it outright. Both are atomic transitions from pending_approval.
+async function decidePayment(id: string, status: "returned" | "rejected", reason: string, action: string, fallback: string): Promise<{ ok: true } | { error: string }> {
   const c = await ctx();
   if (!c?.canApprove) return { error: "You don't have approval rights." };
   const [p] = await db.select().from(payments).where(and(eq(payments.id, id), eq(payments.schoolId, c.schoolId))).limit(1);
   if (!p || p.status !== "pending_approval") return { error: "This payment was already processed." };
   try {
     const updated = await db.update(payments)
-      .set({ status: "rejected", rejectedReason: reason.trim() || "Rejected", updatedAt: new Date() })
+      .set({ status, rejectedReason: reason.trim() || fallback, updatedAt: new Date() })
       .where(and(eq(payments.id, id), eq(payments.status, "pending_approval")))
       .returning({ id: payments.id });
     if (updated.length === 0) return { error: "This payment was already processed." };
-    await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: "payment.rejected", entityType: "Payment", entityId: id, metadata: { amount: Number(p.amount), reason: reason.trim() || "Rejected", ...(await studentLabel(p.studentId)) } });
+    await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action, entityType: "Payment", entityId: id, metadata: { amount: Number(p.amount), reason: reason.trim() || fallback, ...(await studentLabel(p.studentId)) } });
     return { ok: true };
   } catch {
-    return { error: "Could not reject the payment." };
+    return { error: "Could not update the payment." };
   }
 }
+export async function returnPayment(id: string, reason: string) { return decidePayment(id, "returned", reason, "payment.returned", "Returned for correction"); }
+export async function declinePayment(id: string, reason: string) { return decidePayment(id, "rejected", reason, "payment.declined", "Declined"); }
+// Back-compat alias.
+export async function rejectPayment(id: string, reason: string) { return declinePayment(id, reason); }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { updateStudentProfile, type StudentProfile, type StudentBio, type Guardian } from "@/lib/actions/students";
 import { useClassNames } from "@/components/app/use-classes";
+import { Button, Alert } from "./ui";
 
 const GENOTYPES = ["AA", "AS", "SS", "AC", "SC"];
 const BLOOD = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
@@ -34,7 +35,7 @@ export function StudentProfileEdit({ data, onClose, onSaved }: { data: StudentPr
       <div className="mx-auto w-[min(820px,100%)] rounded-2xl bg-paper shadow-[0_30px_80px_rgba(16,33,63,.3)] motion-safe:animate-[fade-up_.2s_ease]" onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 z-10 flex items-center justify-between rounded-t-2xl border-b border-border-soft bg-white px-5 py-3.5"><h2 className="font-display text-[17px] font-semibold">Edit - {data.name}</h2><button onClick={onClose} className="grid size-8 place-items-center rounded-lg text-ink-soft hover:bg-paper">✕</button></div>
         <div className="grid gap-4 p-5">
-          {err && <div className="rounded-[10px] border border-[#f3c2c2] bg-[#fdeeee] px-3 py-2 text-[12px] font-bold text-[#b3261e]">{err}</div>}
+          {err && <Alert tone="error">{err}</Alert>}
           <Box title="Bio data">
             <div className="grid gap-3 sm:grid-cols-2">
               <F label="Sex"><select value={bio.sex} onChange={(e) => set("sex", e.target.value)} className={inputCls}><option value="">-</option><option>Male</option><option>Female</option></select></F>
@@ -83,8 +84,8 @@ export function StudentProfileEdit({ data, onClose, onSaved }: { data: StudentPr
           </Box>
         </div>
         <div className="sticky bottom-0 flex justify-end gap-2 rounded-b-2xl border-t border-border-soft bg-white px-5 py-3.5">
-          <button onClick={onClose} className="inline-flex min-h-10 items-center rounded-[10px] border border-border-soft bg-white px-4 text-[13px] font-extrabold text-ink-soft hover:border-brand-blue">Cancel</button>
-          <button onClick={save} disabled={busy} className="inline-flex min-h-10 items-center rounded-[10px] bg-brand-blue px-5 text-[13px] font-extrabold text-white transition hover:bg-brand-dark disabled:opacity-70">{busy ? "Saving…" : "Save profile"}</button>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button onClick={save} disabled={busy}>{busy ? "Saving…" : "Save profile"}</Button>
         </div>
       </div>
     </div>

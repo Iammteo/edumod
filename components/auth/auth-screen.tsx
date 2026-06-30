@@ -201,7 +201,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
             <div>
               <h1 className="font-display text-[30px] font-extrabold tracking-[-.03em]">Two-factor verification</h1>
               <p className="mt-1.5 text-[14px] leading-relaxed text-ink-soft">Enter the 6-digit code from your authenticator app to finish signing in.</p>
-              {error && <div className="mt-5 rounded-[12px] border border-[#f3c2c2] bg-[#fdeeee] px-3.5 py-2.5 text-[12px] font-bold text-[#b3261e]">{error}</div>}
+              {error && <div className="mt-5 rounded-[12px] border border-danger-line bg-danger-soft px-3.5 py-2.5 text-[12px] font-bold text-danger">{error}</div>}
               <form onSubmit={onTwoFactor} className="mt-5 grid gap-3.5">
                 <label className="grid gap-1.5">
                   <span className="text-[12px] font-extrabold text-ink">Authentication code</span>
@@ -215,7 +215,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
             <div>
               <h1 className="font-display text-[30px] font-extrabold tracking-[-.03em]">Verify your email</h1>
               <p className="mt-1.5 text-[14px] leading-relaxed text-ink-soft">We sent a 6-digit code to <strong className="text-ink">{pending?.email}</strong>. Enter it to finish creating your school.</p>
-              {error && <div className="mt-5 rounded-[12px] border border-[#f3c2c2] bg-[#fdeeee] px-3.5 py-2.5 text-[12px] font-bold text-[#b3261e]">{error}</div>}
+              {error && <div className="mt-5 rounded-[12px] border border-danger-line bg-danger-soft px-3.5 py-2.5 text-[12px] font-bold text-danger">{error}</div>}
               <form onSubmit={onVerify} className="mt-5 grid gap-3.5">
                 <label className="grid gap-1.5">
                   <span className="text-[12px] font-extrabold text-ink">Verification code</span>
@@ -264,7 +264,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
             </>
           )}
 
-          {error && <div className={`${showSocial ? "" : "mt-6"} mb-4 rounded-[12px] border border-[#f3c2c2] bg-[#fdeeee] px-3.5 py-2.5 text-[12px] font-bold text-[#b3261e] motion-safe:animate-[fade-up_.3s_ease]`}>{error}</div>}
+          {error && <div className={`${showSocial ? "" : "mt-6"} mb-4 rounded-[12px] border border-danger-line bg-danger-soft px-3.5 py-2.5 text-[12px] font-bold text-danger motion-safe:animate-[fade-up_.3s_ease]`}>{error}</div>}
 
           <form onSubmit={onSubmit} className={`grid gap-3.5 ${showSocial ? "" : "mt-6"}`}>
             {!isLogin && <>

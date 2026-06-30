@@ -43,7 +43,7 @@ export function ContactForm() {
         <span className="text-[12px] font-extrabold text-ink">How can we help?</span>
         <textarea name="message" required rows={4} placeholder="Tell us a little about your school and what you'd like to achieve." className="resize-y rounded-[12px] border border-border-soft bg-paper/60 px-3.5 py-2.5 text-[14px] text-ink outline-none transition focus:border-brand-blue focus:bg-white focus:ring-2 focus:ring-brand-blue/20" />
       </label>
-      {error && <p className="-mb-1 text-[12px] font-bold text-[#b3261e]">{error}</p>}
+      {error && <p className="-mb-1 text-[12px] font-bold text-danger">{error}</p>}
       <button type="submit" disabled={sending} className="mt-1 inline-flex min-h-12 items-center justify-center gap-2 rounded-[12px] bg-brand-blue px-5 text-[14px] font-extrabold text-white shadow-[0_8px_18px_rgba(33,89,232,.22)] transition hover:-translate-y-0.5 hover:bg-brand-dark disabled:opacity-70">
         {sending ? "Sending…" : <>Send message <span aria-hidden>→</span></>}
       </button>
