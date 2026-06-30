@@ -33,7 +33,7 @@ export function ClassFinanceView({ onViewInvoices }: { onViewInvoices?: () => vo
     setErr(null); setData(r);
     setSelected((cur) => cur ?? r.classes[0]?.className ?? null);
   }, []);
-  useEffect(() => { load(); const t = setInterval(load, 8000); return () => clearInterval(t); }, [load]);
+  useEffect(() => { load(); const tick = () => { if (!document.hidden) load(); }; const t = setInterval(tick, 30000); document.addEventListener("visibilitychange", tick); return () => { clearInterval(t); document.removeEventListener("visibilitychange", tick); }; }, [load]);
 
   const loadDetail = useCallback(async (cn: string) => { const r = await getClassDetail(cn); if (!("error" in r)) setDetail(r); }, []);
   useEffect(() => { if (selected) loadDetail(selected); }, [selected, loadDetail]);
@@ -103,20 +103,30 @@ export function ClassFinanceView({ onViewInvoices }: { onViewInvoices?: () => vo
         <section className="rounded-2xl border border-border-soft bg-white p-5">
           <h2 className="mb-3 font-display text-[15px] font-semibold">Class collection overview</h2>
           {filtered.length === 0 ? <div className="grid place-items-center rounded-xl border border-dashed border-border-soft py-10 text-[12px] text-ink-soft">No classes match. Issue fees to a class to see it here.</div> : (
-            <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-left text-[12px]">
-              <thead><tr className="border-b border-border-soft text-[10px] uppercase tracking-wide text-ink-soft"><th className="py-2 font-bold">Class</th><th className="py-2 text-center font-bold">Students</th><th className="py-2 font-bold">Assigned</th><th className="py-2 font-bold">Paid</th><th className="py-2 font-bold">Outstanding</th><th className="py-2 font-bold">Rate</th><th className="py-2 font-bold">Status</th><th className="hidden py-2 font-bold md:table-cell">Last payment</th></tr></thead>
-              <tbody>{filtered.map((c) => { const [sl, sc] = statusPill(c.status); const sel = selected === c.className; return (
-                <tr key={c.className} onClick={() => setSelected(c.className)} className={`cursor-pointer border-b border-border-soft last:border-0 ${sel ? "bg-brand-soft/50" : "hover:bg-paper/60"}`}>
-                  <td className="py-2.5"><div className="font-bold text-ink">{c.className}</div><div className="text-[10px] text-ink-soft">{c.level}</div></td>
-                  <td className="py-2.5 text-center text-ink-soft">{c.students}</td>
-                  <td className="py-2.5 text-ink-soft">{naira(c.expected)}</td>
-                  <td className="py-2.5 font-bold text-ink">{naira(c.collected)}</td>
-                  <td className="py-2.5 font-extrabold text-[#b3261e]">{naira(c.outstanding)}</td>
-                  <td className="py-2.5"><div className="flex items-center gap-1.5"><span className="h-1.5 w-12 overflow-hidden rounded-full bg-paper"><span className="block h-full rounded-full" style={{ width: `${Math.min(100, c.rate)}%`, backgroundColor: c.rate >= 60 ? "#178a4c" : "#2159e8" }} /></span><span className="text-[10px] font-bold text-ink-soft">{c.rate}%</span></div></td>
-                  <td className="py-2.5"><span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${sc}`}>{sl}</span></td>
-                  <td className="hidden py-2.5 text-ink-soft md:table-cell">{c.lastPayment ?? "-"}</td>
-                </tr>); })}</tbody>
-            </table></div>
+            <>
+              {/* Mobile: stacked cards */}
+              <ul className="grid gap-2 md:hidden">{filtered.map((c) => { const [sl, sc] = statusPill(c.status); const sel = selected === c.className; return (
+                <li key={c.className}><button type="button" onClick={() => setSelected(c.className)} className={`w-full rounded-xl border p-3 text-left transition ${sel ? "border-brand-blue bg-brand-soft/40" : "border-border-soft"}`}>
+                  <div className="flex items-center justify-between gap-2"><div className="flex items-baseline gap-1.5"><span className="font-bold text-ink">{c.className}</span><span className="text-[10px] text-ink-soft">{c.level}</span></div><span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${sc}`}>{sl}</span></div>
+                  <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]"><div><div className="text-[9px] uppercase tracking-wide text-ink-soft">Students</div><div className="font-bold text-ink">{c.students}</div></div><div><div className="text-[9px] uppercase tracking-wide text-ink-soft">Paid</div><div className="font-bold text-ink">{naira(c.collected)}</div></div><div><div className="text-[9px] uppercase tracking-wide text-ink-soft">Outstanding</div><div className="font-extrabold text-[#b3261e]">{naira(c.outstanding)}</div></div></div>
+                  <div className="mt-2 flex items-center gap-1.5"><span className="h-1.5 flex-1 overflow-hidden rounded-full bg-paper"><span className="block h-full rounded-full" style={{ width: `${Math.min(100, c.rate)}%`, backgroundColor: c.rate >= 60 ? "#178a4c" : "#2159e8" }} /></span><span className="text-[10px] font-bold text-ink-soft">{c.rate}%</span></div>
+                </button></li>); })}</ul>
+              {/* Desktop: table */}
+              <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[640px] text-left text-[12px]">
+                <thead><tr className="border-b border-border-soft text-[10px] uppercase tracking-wide text-ink-soft"><th className="py-2 font-bold">Class</th><th className="py-2 text-center font-bold">Students</th><th className="py-2 font-bold">Assigned</th><th className="py-2 font-bold">Paid</th><th className="py-2 font-bold">Outstanding</th><th className="py-2 font-bold">Rate</th><th className="py-2 font-bold">Status</th><th className="hidden py-2 font-bold lg:table-cell">Last payment</th></tr></thead>
+                <tbody>{filtered.map((c) => { const [sl, sc] = statusPill(c.status); const sel = selected === c.className; return (
+                  <tr key={c.className} onClick={() => setSelected(c.className)} className={`cursor-pointer border-b border-border-soft last:border-0 ${sel ? "bg-brand-soft/50" : "hover:bg-paper/60"}`}>
+                    <td className="py-2.5"><div className="font-bold text-ink">{c.className}</div><div className="text-[10px] text-ink-soft">{c.level}</div></td>
+                    <td className="py-2.5 text-center text-ink-soft">{c.students}</td>
+                    <td className="py-2.5 text-ink-soft">{naira(c.expected)}</td>
+                    <td className="py-2.5 font-bold text-ink">{naira(c.collected)}</td>
+                    <td className="py-2.5 font-extrabold text-[#b3261e]">{naira(c.outstanding)}</td>
+                    <td className="py-2.5"><div className="flex items-center gap-1.5"><span className="h-1.5 w-12 overflow-hidden rounded-full bg-paper"><span className="block h-full rounded-full" style={{ width: `${Math.min(100, c.rate)}%`, backgroundColor: c.rate >= 60 ? "#178a4c" : "#2159e8" }} /></span><span className="text-[10px] font-bold text-ink-soft">{c.rate}%</span></div></td>
+                    <td className="py-2.5"><span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${sc}`}>{sl}</span></td>
+                    <td className="hidden py-2.5 text-ink-soft lg:table-cell">{c.lastPayment ?? "-"}</td>
+                  </tr>); })}</tbody>
+              </table></div>
+            </>
           )}
           <p className="mt-3 text-[11px] text-ink-soft">Showing {filtered.length} of {data.classes.length} classes</p>
         </section>
@@ -134,18 +144,28 @@ export function ClassFinanceView({ onViewInvoices }: { onViewInvoices?: () => vo
         <section className="rounded-2xl border border-border-soft bg-white p-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h2 className="font-display text-[15px] font-semibold">Students with balances{detail ? ` · ${detail.className}` : ""}</h2><div className="flex items-center gap-1.5 rounded-[10px] border border-border-soft bg-paper/60 px-2.5"><span className="text-ink-soft">⌕</span><input value={stuQ} onChange={(e) => setStuQ(e.target.value)} placeholder="Search student…" className="min-h-9 w-32 bg-transparent text-[12px] outline-none" /></div></div>
           {!detail || studentsFiltered.length === 0 ? <div className="grid place-items-center rounded-xl border border-dashed border-border-soft py-10 text-[12px] text-ink-soft">{detail ? "No students with balances here." : "Select a class to see its students."}</div> : (
-            <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-[12px]">
-              <thead><tr className="border-b border-border-soft text-[10px] uppercase tracking-wide text-ink-soft"><th className="py-2 font-bold">Student</th><th className="hidden py-2 font-bold sm:table-cell">Guardian</th><th className="py-2 font-bold">Paid</th><th className="py-2 font-bold">Outstanding</th><th className="py-2 font-bold">Status</th><th className="hidden py-2 font-bold md:table-cell">Last payment</th></tr></thead>
-              <tbody>{studentsFiltered.slice(0, 12).map((s) => { const [sl, sc] = stuPill(s.status); return (
-                <tr key={s.id} className="border-b border-border-soft last:border-0 hover:bg-paper/60">
-                  <td className="py-2.5"><div className="flex items-center gap-2.5"><span className="grid size-7 shrink-0 place-items-center rounded-full text-[10px] font-extrabold text-white" style={{ backgroundColor: AV[s.name.length % AV.length] }}>{initials(s.name)}</span><span className="font-bold text-ink">{s.name}</span></div></td>
-                  <td className="hidden py-2.5 sm:table-cell"><div className="text-ink-soft">{s.guardian || "-"}</div><div className="text-[10px] text-ink-soft">{s.guardianPhone}</div></td>
-                  <td className="py-2.5 font-bold text-ink">{naira(s.paid)}</td>
-                  <td className={`py-2.5 font-extrabold ${s.outstanding > 0 ? "text-[#b3261e]" : "text-brand-green"}`}>{naira(s.outstanding)}</td>
-                  <td className="py-2.5"><span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${sc}`}>{sl}</span></td>
-                  <td className="hidden py-2.5 text-ink-soft md:table-cell">{s.lastPayment ?? "-"}</td>
-                </tr>); })}</tbody>
-            </table></div>
+            <>
+              {/* Mobile: stacked cards */}
+              <ul className="grid gap-2 md:hidden">{studentsFiltered.slice(0, 12).map((s) => { const [sl, sc] = stuPill(s.status); return (
+                <li key={s.id} className="rounded-xl border border-border-soft p-3">
+                  <div className="flex items-center justify-between gap-2"><div className="flex min-w-0 items-center gap-2.5"><span className="grid size-7 shrink-0 place-items-center rounded-full text-[10px] font-extrabold text-white" style={{ backgroundColor: AV[s.name.length % AV.length] }}>{initials(s.name)}</span><span className="truncate font-bold text-ink">{s.name}</span></div><span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${sc}`}>{sl}</span></div>
+                  {(s.guardian || s.guardianPhone) && <div className="mt-1.5 truncate text-[11px] text-ink-soft">{s.guardian || "-"}{s.guardianPhone ? ` · ${s.guardianPhone}` : ""}</div>}
+                  <div className="mt-1.5 flex items-center justify-between text-[12px]"><span className="text-ink-soft">Paid <b className="text-ink">{naira(s.paid)}</b></span><span className="text-ink-soft">Due <b className={s.outstanding > 0 ? "text-[#b3261e]" : "text-brand-green"}>{naira(s.outstanding)}</b></span></div>
+                </li>); })}</ul>
+              {/* Desktop: table */}
+              <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[560px] text-left text-[12px]">
+                <thead><tr className="border-b border-border-soft text-[10px] uppercase tracking-wide text-ink-soft"><th className="py-2 font-bold">Student</th><th className="hidden py-2 font-bold lg:table-cell">Guardian</th><th className="py-2 font-bold">Paid</th><th className="py-2 font-bold">Outstanding</th><th className="py-2 font-bold">Status</th><th className="hidden py-2 font-bold lg:table-cell">Last payment</th></tr></thead>
+                <tbody>{studentsFiltered.slice(0, 12).map((s) => { const [sl, sc] = stuPill(s.status); return (
+                  <tr key={s.id} className="border-b border-border-soft last:border-0 hover:bg-paper/60">
+                    <td className="py-2.5"><div className="flex items-center gap-2.5"><span className="grid size-7 shrink-0 place-items-center rounded-full text-[10px] font-extrabold text-white" style={{ backgroundColor: AV[s.name.length % AV.length] }}>{initials(s.name)}</span><span className="font-bold text-ink">{s.name}</span></div></td>
+                    <td className="hidden py-2.5 lg:table-cell"><div className="text-ink-soft">{s.guardian || "-"}</div><div className="text-[10px] text-ink-soft">{s.guardianPhone}</div></td>
+                    <td className="py-2.5 font-bold text-ink">{naira(s.paid)}</td>
+                    <td className={`py-2.5 font-extrabold ${s.outstanding > 0 ? "text-[#b3261e]" : "text-brand-green"}`}>{naira(s.outstanding)}</td>
+                    <td className="py-2.5"><span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${sc}`}>{sl}</span></td>
+                    <td className="hidden py-2.5 text-ink-soft lg:table-cell">{s.lastPayment ?? "-"}</td>
+                  </tr>); })}</tbody>
+              </table></div>
+            </>
           )}
         </section>
       </div>
@@ -167,7 +187,7 @@ function SelectedClass({ detail, onViewInvoices }: { detail: ClassDetail | null;
       <div className="mt-4 grid items-center gap-4 sm:grid-cols-[1fr_auto]">
         <div>
           <div className="mb-1.5 text-[11px] font-extrabold text-ink-soft">Fee items breakdown</div>
-          {detail.feeItems.length === 0 ? <p className="text-[12px] text-ink-soft">No fees issued to this class yet.</p> : <ul className="grid gap-1">{detail.feeItems.map((it, i) => <li key={it.description} className="flex items-center justify-between gap-2 text-[12px]"><span className="flex items-center gap-1.5 text-ink-soft"><span className="size-2 rounded-full" style={{ backgroundColor: FEE_COLORS[i % FEE_COLORS.length] }} />{it.description}{!it.mandatory && <span className="rounded-full bg-[#fdf6e9] px-1.5 py-0.5 text-[9px] font-extrabold text-[#b9540f]">Optional</span>}</span><span className="font-bold text-ink">{naira(it.amount)}</span></li>)}</ul>}
+          {detail.feeItems.length === 0 ? <p className="text-[12px] text-ink-soft">No fees issued to this class yet.</p> : <ul className="grid gap-1">{detail.feeItems.map((it, i) => <li key={`${it.description}-${i}`} className="flex items-center justify-between gap-2 text-[12px]"><span className="flex items-center gap-1.5 text-ink-soft"><span className="size-2 rounded-full" style={{ backgroundColor: FEE_COLORS[i % FEE_COLORS.length] }} />{it.description}{!it.mandatory && <span className="rounded-full bg-[#fdf6e9] px-1.5 py-0.5 text-[9px] font-extrabold text-[#b9540f]">Optional</span>}</span><span className="font-bold text-ink">{naira(it.amount)}</span></li>)}</ul>}
         </div>
         <div className="mx-auto grid place-items-center">
           <div className="relative size-36">

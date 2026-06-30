@@ -69,9 +69,15 @@ export async function getAttendanceAnalytics(className: string, date: string): P
   const c = await ctx();
   if (!c) return { byClass: [], week: [], recent: [] };
   const days = mondayToFriday(date);
+  // Non-admins only see their own class's rates (a class teacher shouldn't see every class's numbers).
+  const limitToClass = !c.isAdmin;
+  const myClass = c.assignedClass;
+  if (limitToClass && !myClass) return { byClass: [], week: [], recent: [] }; // a teacher with no class has nothing to show
+  const rosterWhere = limitToClass ? and(eq(students.schoolId, c.schoolId), eq(students.className, myClass!)) : eq(students.schoolId, c.schoolId);
+  const dayWhere = limitToClass ? and(eq(studentAttendance.schoolId, c.schoolId), eq(studentAttendance.attendanceDate, date), eq(studentAttendance.className, myClass!)) : and(eq(studentAttendance.schoolId, c.schoolId), eq(studentAttendance.attendanceDate, date));
   const [rosterCounts, dayMarks, weekMarks, recentRows] = await Promise.all([
-    db.select({ cn: students.className, n: sql<number>`count(*)::int` }).from(students).where(eq(students.schoolId, c.schoolId)).groupBy(students.className),
-    db.select({ cn: studentAttendance.className, status: studentAttendance.status }).from(studentAttendance).where(and(eq(studentAttendance.schoolId, c.schoolId), eq(studentAttendance.attendanceDate, date))),
+    db.select({ cn: students.className, n: sql<number>`count(*)::int` }).from(students).where(rosterWhere).groupBy(students.className),
+    db.select({ cn: studentAttendance.className, status: studentAttendance.status }).from(studentAttendance).where(dayWhere),
     db.select({ d: studentAttendance.attendanceDate, status: studentAttendance.status }).from(studentAttendance).where(and(eq(studentAttendance.schoolId, c.schoolId), eq(studentAttendance.className, className), gte(studentAttendance.attendanceDate, days[0].iso), lte(studentAttendance.attendanceDate, days[days.length - 1].iso))),
     db.select({ action: auditLogs.action, meta: auditLogs.metadata, createdAt: auditLogs.createdAt, actor: users.name }).from(auditLogs).leftJoin(users, eq(users.id, auditLogs.actorUserId)).where(and(eq(auditLogs.schoolId, c.schoolId), inArray(auditLogs.action, ["attendance.class_marked", "attendance.class_cleared"]))).orderBy(desc(auditLogs.createdAt)).limit(6),
   ]);
@@ -83,11 +89,13 @@ export async function getAttendanceAnalytics(className: string, date: string): P
   const presentByDay = new Map<string, number>();
   for (const m of weekMarks) if (m.status === "present") presentByDay.set(m.d as string, (presentByDay.get(m.d as string) ?? 0) + 1);
   const week: DayRate[] = days.map((d) => ({ label: d.label, rate: classTotal ? Math.round(((presentByDay.get(d.iso) ?? 0) / classTotal) * 100) : 0 }));
-  const recent: ActivityItem[] = recentRows.map((r) => {
-    const meta = (r.meta ?? {}) as { className?: string };
-    const cleared = r.action === "attendance.class_cleared";
-    return { text: `${meta.className ?? "A class"} attendance ${cleared ? "cleared" : "marked"}${r.actor ? ` by ${r.actor}` : ""}`, time: new Date(r.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }), kind: cleared ? "cleared" : "marked" };
-  });
+  const recent: ActivityItem[] = recentRows
+    .filter((r) => c.isAdmin || ((r.meta ?? {}) as { className?: string }).className === c.assignedClass)
+    .map((r) => {
+      const meta = (r.meta ?? {}) as { className?: string };
+      const cleared = r.action === "attendance.class_cleared";
+      return { text: `${meta.className ?? "A class"} attendance ${cleared ? "cleared" : "marked"}${r.actor ? ` by ${r.actor}` : ""}`, time: new Date(r.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }), kind: cleared ? "cleared" : "marked" };
+    });
   return { byClass, week, recent };
 }
 

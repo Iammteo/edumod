@@ -10,6 +10,11 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { feeStructures, invoices, memberships, payments, schools, students, users } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
+import { billStatus, loadInvoiceBillsByFilter, EXPORT_CAP } from "@/lib/invoice";
+import { loadReceiptReport, RECEIPT_EXPORT_CAP, type ReceiptReportRow } from "@/lib/receipt";
+
+// Accepted proof-of-payment file types → file extension. Server-validated against the upload's MIME.
+const PROOF_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg", "image/gif": "gif", "image/webp": "webp", "application/pdf": "pdf" };
 
 // Staff allowed to record payments / issue fees. Bursars and senior staff manage finance, not just
 // the owner-admin.
@@ -133,6 +138,26 @@ export async function getFinanceData(): Promise<FinanceData | { error: string }>
   };
 }
 
+// ---------------------------------------------------------------------------- Reports & exports
+export type InvoiceReportRow = { id: string; no: string; student: string; className: string | null; billName: string | null; termLabel: string | null; total: number; paid: number; outstanding: number; status: string };
+// Filtered invoice report (by class / term / status) backing the Reports & exports section and its
+// print/download. Any finance-viewing member can run it.
+export async function getInvoiceReport(filter: { className?: string; termLabel?: string; status?: string }): Promise<{ rows: InvoiceReportRow[]; matched: number; cap: number } | { error: string }> {
+  const c = await ctx();
+  if (!c) return { error: "Not authorised." };
+  const { bills, matched } = await loadInvoiceBillsByFilter(c.schoolId, filter);
+  const rows: InvoiceReportRow[] = bills.map((b) => ({ id: b.id, no: b.no, student: b.studentName, className: b.className, billName: b.billName, termLabel: b.termLabel, total: b.total, paid: b.paid, outstanding: b.outstanding, status: billStatus(b) }));
+  return { rows, matched, cap: EXPORT_CAP };
+}
+
+// Filtered receipt report (by class / term / date range) backing the receipts export.
+export async function getReceiptReport(filter: { className?: string; termLabel?: string; from?: string; to?: string }): Promise<{ rows: ReceiptReportRow[]; matched: number; cap: number } | { error: string }> {
+  const c = await ctx();
+  if (!c) return { error: "Not authorised." };
+  const { rows, matched } = await loadReceiptReport(c.schoolId, filter);
+  return { rows, matched, cap: RECEIPT_EXPORT_CAP };
+}
+
 // Creates a fee bill made of one or more line items (e.g. Tuition, Excursion, PTA), each marked
 // mandatory or optional, and issues one invoice per item to each targeted student. When `classes`
 // is empty the bill applies to every student; otherwise only to students in those classes.
@@ -186,13 +211,17 @@ export async function recordPayment(form: FormData): Promise<{ ok: true } | { er
   let proofKey: string | null = null;
   const proof = form.get("proof");
   if (proof instanceof File && proof.size > 0) {
-    if (proof.size > 6 * 1024 * 1024) return { error: "Proof image must be under 6MB." };
-    const ext = (proof.type.split("/")[1] || "png").replace("jpeg", "jpg").replace(/[^a-z0-9]/gi, "") || "png";
+    if (proof.size > 6 * 1024 * 1024) return { error: "Proof must be under 6MB." };
+    // Safelist by MIME type (the value is server-validated, not just the extension). No SVG/HTML -
+    // they could carry scripts. Payment proofs are private, so they're written outside /public and
+    // served only through the auth-gated /api/proof/[id] route.
+    const ext = PROOF_TYPES[proof.type];
+    if (!ext) return { error: "Proof must be a PNG, JPG, GIF, WEBP or PDF file." };
     const name = `proof-${randomUUID()}.${ext}`;
-    const dir = path.join(process.cwd(), "public", "uploads");
+    const dir = path.join(process.cwd(), "private-uploads");
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, name), Buffer.from(await proof.arrayBuffer()));
-    proofKey = `/uploads/${name}`;
+    proofKey = name;
   }
   try {
     const [row] = await db.insert(payments).values({ schoolId: c.schoolId, studentId, invoiceId, amount: amount.toFixed(2), method: method === "transfer" ? "transfer" : "cash", status: "pending_approval", description: description || null, recordedByUserId: c.userId, proofKey }).returning({ id: payments.id });
@@ -214,7 +243,13 @@ export async function approvePayment(id: string): Promise<{ ok: true } | { error
   // Maker-checker is only enforced when the school opts into it (Settings → "separate approver").
   if (c.requireApproval && p.recordedByUserId === c.userId) return { error: "Maker-checker is on: a different staff member must approve this payment." };
   try {
-    await db.update(payments).set({ status: "approved", approvedByUserId: c.userId, approvedAt: new Date(), receiptKey: p.receiptKey || randomUUID(), updatedAt: new Date() }).where(eq(payments.id, id));
+    // Atomic transition: only the first concurrent approval flips pending_approval → approved, so
+    // two clicks can't both issue a receipt. If no row matched, someone already processed it.
+    const updated = await db.update(payments)
+      .set({ status: "approved", approvedByUserId: c.userId, approvedAt: new Date(), receiptKey: p.receiptKey || randomUUID(), updatedAt: new Date() })
+      .where(and(eq(payments.id, id), eq(payments.status, "pending_approval")))
+      .returning({ id: payments.id });
+    if (updated.length === 0) return { error: "This payment was already processed." };
     if (p.invoiceId) await reconcileInvoice(p.invoiceId, c.schoolId);
     await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: "payment.approved", entityType: "Payment", entityId: id, metadata: { amount: Number(p.amount), ...(await studentLabel(p.studentId)) } });
     return { ok: true };
@@ -239,7 +274,11 @@ export async function rejectPayment(id: string, reason: string): Promise<{ ok: t
   const [p] = await db.select().from(payments).where(and(eq(payments.id, id), eq(payments.schoolId, c.schoolId))).limit(1);
   if (!p || p.status !== "pending_approval") return { error: "This payment was already processed." };
   try {
-    await db.update(payments).set({ status: "rejected", rejectedReason: reason.trim() || "Rejected", updatedAt: new Date() }).where(eq(payments.id, id));
+    const updated = await db.update(payments)
+      .set({ status: "rejected", rejectedReason: reason.trim() || "Rejected", updatedAt: new Date() })
+      .where(and(eq(payments.id, id), eq(payments.status, "pending_approval")))
+      .returning({ id: payments.id });
+    if (updated.length === 0) return { error: "This payment was already processed." };
     await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: "payment.rejected", entityType: "Payment", entityId: id, metadata: { amount: Number(p.amount), reason: reason.trim() || "Rejected", ...(await studentLabel(p.studentId)) } });
     return { ok: true };
   } catch {

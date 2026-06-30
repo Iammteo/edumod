@@ -1,35 +1,36 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getFinanceData, recordPayment, approvePayment, rejectPayment, createFeeStructure, type FinanceData, type Payment, type Student } from "@/lib/actions/finance";
+import { getFinanceData, recordPayment, approvePayment, rejectPayment, createFeeStructure, getInvoiceReport, getReceiptReport, type FinanceData, type Payment, type Student, type InvoiceReportRow } from "@/lib/actions/finance";
+import type { ReceiptReportRow } from "@/lib/receipt";
 import { useClassNames } from "@/components/app/use-classes";
 import { ClassFinanceView } from "./class-finance";
 
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
-export type FinanceSection = "overview" | "record" | "approvals" | "bills" | "invoices" | "classsummary" | "overpayments" | "reports";
+export type FinanceSection = "record" | "approvals" | "bills" | "invoices" | "classsummary" | "overpayments" | "reports";
 const SECTION_HEAD: Record<FinanceSection, [string, string]> = {
-  overview: ["Finance overview", "Collections, approvals and outstanding at a glance."],
   record: ["Record payment", "Record a payment towards a student's invoice or fee."],
   approvals: ["Approvals", "Review and approve payments under maker-checker control."],
   bills: ["Bills & fee structures", "Create and issue bills to students and classes."],
-  invoices: ["Invoices & receipts", "Create, manage and share invoices with parents and guardians."],
+  invoices: ["Invoices & receipts", "Filter, download and print invoices and receipts."],
   classsummary: ["Class finance summary", "Monitor class collections, outstanding balances and payment performance."],
   overpayments: ["Overpayments & refunds", "Track credit balances and process refunds."],
-  reports: ["Reports & exports", "Export financial reports for any period."],
+  reports: ["Report card", "Generate and share student report cards."],
 };
 function FinHead({ section }: { section: FinanceSection }) {
   const [t, s] = SECTION_HEAD[section];
   return <div className="mb-5"><div className="text-[11px] font-extrabold text-brand-blue">Finance</div><h1 className="font-display text-[clamp(21px,3.5vw,28px)] font-semibold leading-tight">{t}</h1><p className="mt-0.5 text-[13px] text-ink-soft">{s}</p></div>;
 }
 
-export function FinanceArea({ section }: { section: FinanceSection }) {
+export function FinanceArea({ section, onPick }: { section: FinanceSection | null; onPick: (s: FinanceSection) => void }) {
   const [data, setData] = useState<FinanceData | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const load = useCallback(async () => { const r = await getFinanceData(); if ("error" in r) setErr(r.error); else setData(r); }, []);
-  useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t); }, [load]);
+  useEffect(() => { if (!section) return; load(); const tick = () => { if (!document.hidden) load(); }; const t = setInterval(tick, 20000); document.addEventListener("visibilitychange", tick); return () => { clearInterval(t); document.removeEventListener("visibilitychange", tick); }; }, [load, section]);
   const flash = (m: string) => { setOk(m); setErr(null); setTimeout(() => setOk((v) => (v === m ? null : v)), 3500); };
 
+  if (!section) return <FinanceLanding onPick={onPick} />;
   if (section === "classsummary") return <ClassFinanceView />;
   if (!data) return <div className="grid place-items-center gap-3 py-20 text-[13px] text-ink-soft">{err ? <><p className="font-bold text-[#b3261e]">{err}</p><button onClick={load} className="rounded-[10px] bg-brand-blue px-4 py-2 text-[12px] font-extrabold text-white">Retry</button></> : "Loading finance…"}</div>;
 
@@ -43,11 +44,40 @@ export function FinanceArea({ section }: { section: FinanceSection }) {
       {section === "record" && (data.canRecord ? <RecordPaymentScreen data={data} onDone={() => { flash("Payment submitted for approval."); load(); }} onErr={setErr} /> : noAccess)}
       {section === "approvals" && <div className="grid gap-[18px] xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"><PaymentsQueueCard data={data} /><ApprovalCard data={data} onApprove={async (id) => { const r = await approvePayment(id); if ("error" in r) setErr(r.error); else { flash("Payment approved - receipt issued."); load(); } }} onReject={async (id) => { const reason = window.prompt("Reason for returning/declining this payment?"); if (reason === null) return; const r = await rejectPayment(id, reason); if ("error" in r) setErr(r.error); else { flash("Payment returned."); load(); } }} scrollAll={() => {}} /></div>}
       {section === "bills" && (data.canRecord ? <IssueFeesCard data={data} onDone={(n) => { flash(`Fee issued - ${n} invoice${n === 1 ? "" : "s"} created.`); load(); }} onErr={setErr} /> : noAccess)}
-      {section === "invoices" && <InvoicesReceiptsCard data={data} onGenerateInvoice={() => {}} onGenerateReceipt={() => {}} />}
+      {section === "invoices" && <InvoicesReceiptsCard data={data} />}
       {(section === "overpayments" || section === "reports") && <div className="grid place-items-center rounded-2xl border border-dashed border-border-soft bg-white py-20 text-center"><div className="mb-2 text-3xl">🛠️</div><p className="text-[14px] font-bold text-ink">Coming soon</p><p className="mt-1 text-[12px] text-ink-soft">{SECTION_HEAD[section][1]}</p></div>}
-      {section === "overview" && <FinanceView initial={data} />}
     </>
   );
+}
+
+// Finance landing - shown until a section is chosen. Lets any area be selected (and keeps Finance usable on mobile, where the sub-menu lives in the drawer).
+const LANDING_ORDER: FinanceSection[] = ["record", "approvals", "bills", "invoices", "classsummary", "overpayments", "reports"];
+function FinanceLanding({ onPick }: { onPick: (s: FinanceSection) => void }) {
+  return (
+    <>
+      <div className="mb-5">
+        <div className="text-[11px] font-extrabold text-brand-blue">Finance</div>
+        <h1 className="font-display text-[clamp(21px,3.5vw,28px)] font-semibold leading-tight">Finance management</h1>
+        <p className="mt-0.5 text-[13px] text-ink-soft">Choose an area to get started.</p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {LANDING_ORDER.map((sk) => {
+          const [t, s] = SECTION_HEAD[sk];
+          return (
+            <button key={sk} onClick={() => onPick(sk)} className="group flex flex-col rounded-2xl border border-border-soft bg-white p-5 text-left transition hover:-translate-y-0.5 hover:border-brand-blue hover:shadow-sm">
+              <span className="grid size-10 place-items-center rounded-full bg-brand-soft text-brand-blue transition group-hover:bg-brand-blue group-hover:text-white">{landingIcon(sk)}</span>
+              <span className="mt-3 font-display text-[15px] font-semibold text-ink">{t}</span>
+              <span className="mt-1 text-[12px] leading-relaxed text-ink-soft">{s}</span>
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+function landingIcon(sk: FinanceSection): React.ReactNode {
+  const map: Record<FinanceSection, React.ReactNode> = { record: <Card2 />, approvals: <Shield />, bills: <Doc />, invoices: <Receipt />, classsummary: <Users />, overpayments: <Wallet />, reports: <Chart /> };
+  return map[sk];
 }
 
 // New two-column Record payment screen: form on the left, live student summary on the right.
@@ -162,157 +192,10 @@ function RecordPaymentScreen({ data, onDone, onErr }: { data: FinanceData; onDon
 }
 
 const naira = (n: number) => `₦${Math.round(n).toLocaleString()}`;
-const compact = (n: number) => (n >= 1_000_000 ? `₦${(n / 1_000_000).toFixed(2).replace(/\.00$/, "")}M` : n >= 1000 ? `₦${(n / 1000).toFixed(0)}k` : `₦${n}`);
 const initials = (s: string) => s.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("") || "?";
 const AV = ["#2159e8", "#178a4c", "#b9540f", "#6b2fb3", "#0f8a8a", "#c0392b"];
 const FEE_TYPES = ["Tuition", "Practical", "Lesson money", "Transport", "PTA"];
 const TERMS = ["2023/2024 · Term 1", "2023/2024 · Term 2", "2023/2024 · Term 3", "2024/2025 · Term 1"];
-
-export function FinanceView({ initial }: { initial?: FinanceData }) {
-  const [data, setData] = useState<FinanceData | null>(initial ?? null);
-  const [err, setErr] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    const r = await getFinanceData();
-    if ("error" in r) setErr(r.error);
-    else { setData(r); }
-  }, []);
-  // Live: refresh on mount and every 5s so approvals/payments by anyone appear in near real-time.
-  useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t); }, [load]);
-
-  const flash = (msg: string) => { setOk(msg); setErr(null); setTimeout(() => setOk((v) => (v === msg ? null : v)), 3500); };
-
-  if (!data) return <div className="grid place-items-center gap-3 py-20 text-[13px] text-ink-soft">{err ? <><p className="font-bold text-[#b3261e]">{err}</p><button onClick={load} className="rounded-[10px] bg-brand-blue px-4 py-2 text-[12px] font-extrabold text-white">Retry</button></> : "Loading finance…"}</div>;
-  const s = data.stats;
-  const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-
-  const stats: { label: string; value: string; sub: string; color: string; bg: string; icon: React.ReactNode }[] = [
-    { label: "Total collected", value: compact(s.collected), sub: `${s.receiptsIssued} approved payments`, color: "#178a4c", bg: "#e7f6ee", icon: <Wallet /> },
-    { label: "Outstanding", value: compact(s.outstanding), sub: `${s.outstandingCount} invoices`, color: "#b9540f", bg: "#fbeee3", icon: <Alert /> },
-    { label: "Pending approval", value: compact(s.pending), sub: `${s.pendingCount} payments`, color: "#6b2fb3", bg: "#f0e9fa", icon: <Clock /> },
-    { label: "This month", value: compact(s.thisMonth), sub: "Approved this month", color: "#2159e8", bg: "#e7eefc", icon: <Chart /> },
-    { label: "Receipts issued", value: String(s.receiptsIssued), sub: "This term", color: "#178a4c", bg: "#e7f6ee", icon: <Receipt /> },
-  ];
-
-  return (
-    <>
-      <div className="mb-5 flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
-        <div>
-          <div className="flex items-center gap-2"><h1 className="font-display text-[clamp(21px,3.5vw,28px)] font-semibold leading-tight">Finance management</h1><span className="inline-flex items-center gap-1.5 rounded-full bg-brand-green/10 px-2.5 py-1 text-[10px] font-extrabold text-brand-green"><span className="size-1.5 animate-pulse rounded-full bg-brand-green" />Live</span></div>
-          <p className="mt-0.5 text-[13px] text-ink-soft">Manage payments, issue fees, and track approvals with maker-checker control.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="relative grid size-10 place-items-center rounded-[12px] border border-border-soft bg-white text-ink-soft">{<Bell />}{s.pendingCount > 0 && <span className="absolute -right-1 -top-1 grid min-w-[18px] place-items-center rounded-full bg-[#e5484d] px-1 text-[10px] font-extrabold text-white">{s.pendingCount}</span>}</span>
-          {data.canRecord && <button onClick={() => scrollTo("issue-card")} className="inline-flex min-h-10 items-center gap-1.5 rounded-[12px] border border-border-soft bg-white px-4 text-[13px] font-extrabold text-ink transition hover:border-brand-blue hover:text-brand-blue"><Doc />Issue fees</button>}
-          {data.canRecord && <button onClick={() => scrollTo("record-card")} className="inline-flex min-h-10 items-center gap-1.5 rounded-[12px] bg-brand-blue px-4 text-[13px] font-extrabold text-white transition hover:-translate-y-0.5 hover:bg-brand-dark"><Card2 />Record payment</button>}
-        </div>
-      </div>
-
-      {err && <div className="mb-4 rounded-[12px] border border-[#f3c2c2] bg-[#fdeeee] px-3.5 py-2.5 text-[12px] font-bold text-[#b3261e]">{err}</div>}
-      {ok && <div className="mb-4 rounded-[12px] border border-brand-green/30 bg-brand-green/10 px-3.5 py-2.5 text-[12px] font-bold text-brand-green">{ok}</div>}
-      {!data.canRecord && <div className="mb-4 rounded-[12px] border border-border-soft bg-paper/60 px-3.5 py-2.5 text-[12px] font-bold text-ink-soft">You can view payments and approvals here. Recording payments and issuing fees is available to an <span className="text-ink">admin, bursar, principal or vice-principal</span>.</div>}
-
-      <div className="grid grid-cols-2 gap-2.5 sm:gap-3.5 lg:grid-cols-3 xl:grid-cols-5">
-        {stats.map((st) => (
-          <div key={st.label} className="rounded-2xl border border-border-soft bg-white p-3.5 sm:p-[18px]">
-            <span className="grid size-9 place-items-center rounded-full" style={{ backgroundColor: st.bg, color: st.color }}>{st.icon}</span>
-            <strong className="mt-2.5 block break-words font-display text-[clamp(17px,5vw,24px)] font-semibold leading-none">{st.value}</strong>
-            <small className="mt-1.5 block font-bold text-ink-soft">{st.label}</small>
-            <div className="mt-1 hidden text-[11px] font-bold text-ink-soft sm:block">{st.sub}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-[18px] grid gap-[18px] lg:grid-cols-2 xl:grid-cols-3">
-        {data.canRecord && <RecordPaymentCard data={data} onDone={() => { flash("Payment submitted for approval."); load(); }} onErr={setErr} />}
-        <ApprovalCard data={data} onApprove={async (id) => { const r = await approvePayment(id); if ("error" in r) setErr(r.error); else { flash("Payment approved - receipt issued."); load(); } }} onReject={async (id) => { const reason = window.prompt("Reason for rejecting this payment?"); if (reason === null) return; const r = await rejectPayment(id, reason); if ("error" in r) setErr(r.error); else { flash("Payment rejected."); load(); } }} scrollAll={() => scrollTo("payments-table")} />
-        {data.canRecord && <IssueFeesCard data={data} onDone={(n) => { flash(`Fee issued - ${n} invoice${n === 1 ? "" : "s"} created.`); load(); }} onErr={setErr} />}
-      </div>
-
-      <div className="mt-[18px] grid gap-[18px] lg:grid-cols-2">
-        <InvoicesReceiptsCard data={data} onGenerateInvoice={() => scrollTo("issue-card")} onGenerateReceipt={() => scrollTo("record-card")} />
-        <PaymentsQueueCard data={data} />
-      </div>
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------- Record a payment
-function RecordPaymentCard({ data, onDone, onErr }: { data: FinanceData; onDone: () => void; onErr: (e: string) => void }) {
-  const [studentId, setStudentId] = useState("");
-  const [invoiceId, setInvoiceId] = useState("");
-  const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState<"cash" | "transfer">("cash");
-  const [busy, setBusy] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [proofName, setProofName] = useState<string | null>(null);
-
-  const openForStudent = useMemo(() => data.openInvoices.filter((i) => i.studentId === studentId), [data.openInvoices, studentId]);
-  const selInvoice = openForStudent.find((i) => i.id === invoiceId) || null;
-
-  function pickStudent(id: string) { setStudentId(id); setInvoiceId(""); }
-  function pickInvoice(id: string) { setInvoiceId(id); const inv = data.openInvoices.find((i) => i.id === id); if (inv) setAmount(String(inv.outstanding)); }
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!studentId) { onErr("Please select a student."); return; }
-    const proof = fileRef.current?.files?.[0];
-    if (method === "transfer" && !proof) { onErr("Proof of payment is required for transfers."); return; }
-    const fd = new FormData();
-    fd.set("studentId", studentId);
-    if (invoiceId) fd.set("invoiceId", invoiceId);
-    fd.set("amount", amount);
-    fd.set("method", method);
-    fd.set("description", selInvoice?.description ?? "");
-    if (proof) fd.set("proof", proof);
-    setBusy(true);
-    const r = await recordPayment(fd);
-    setBusy(false);
-    if ("error" in r) { onErr(r.error); return; }
-    setStudentId(""); setInvoiceId(""); setAmount(""); setMethod("cash"); setProofName(null); if (fileRef.current) fileRef.current.value = "";
-    onDone();
-  }
-
-  return (
-    <section id="record-card" className="rounded-2xl border border-border-soft bg-white p-5">
-      <h2 className="mb-4 flex items-center gap-2 font-display text-[16px] font-semibold"><span className="text-brand-green"><Card2 /></span>Record a payment</h2>
-      {data.students.length === 0 ? <p className="text-[12px] text-ink-soft">Add students first (Students tab) before recording payments.</p> : (
-        <form onSubmit={submit} className="grid gap-3.5">
-          <Field label="Student"><StudentPicker students={data.students} value={studentId} onChange={pickStudent} /></Field>
-          <div className="grid gap-3.5 sm:grid-cols-[1.4fr_1fr]">
-            <Field label="Fee / Invoice">
-              <select value={invoiceId} onChange={(e) => pickInvoice(e.target.value)} disabled={!studentId} className={selectCls}>
-                <option value="">General payment (no invoice)</option>
-                {openForStudent.map((i) => <option key={i.id} value={i.id}>{i.description} ({i.no}) - due {naira(i.outstanding)}</option>)}
-              </select>
-              {selInvoice && <p className="mt-1 text-[11px] font-bold text-ink-soft">Outstanding: <span className="text-[#b9540f]">{naira(selInvoice.outstanding)}</span></p>}
-              {studentId && openForStudent.length === 0 && <p className="mt-1 text-[11px] text-ink-soft">No open invoices for this student.</p>}
-            </Field>
-            <Field label="Amount (₦)"><input value={amount} onChange={(e) => setAmount(e.target.value)} type="number" min="1" step="0.01" required placeholder="120000" className={inputCls} /></Field>
-          </div>
-          <Field label="Payment method">
-            <div className="grid grid-cols-2 gap-2">
-              <button type="button" onClick={() => setMethod("cash")} className={`min-h-10 rounded-[10px] border text-[13px] font-extrabold transition ${method === "cash" ? "border-brand-blue bg-brand-soft text-brand-blue" : "border-border-soft bg-white text-ink-soft hover:border-brand-blue"}`}>Cash</button>
-              <button type="button" onClick={() => setMethod("transfer")} className={`inline-flex min-h-10 items-center justify-center gap-1.5 rounded-[10px] border text-[13px] font-extrabold transition ${method === "transfer" ? "border-brand-blue bg-brand-soft text-brand-blue" : "border-border-soft bg-white text-ink-soft hover:border-brand-blue"}`}><Bank />Transfer</button>
-            </div>
-          </Field>
-          <Field label={<>Proof of payment {method === "transfer" ? <span className="text-[#b9540f]">(required for transfer)</span> : <span className="font-bold text-ink-soft">(optional)</span>}</>}>
-            <label className="flex cursor-pointer items-center justify-between gap-3 rounded-[10px] border border-dashed border-border-soft bg-paper/50 px-3.5 py-3 transition hover:border-brand-blue">
-              <span className="flex items-center gap-2.5 text-[12px] text-ink-soft"><span className="grid size-8 place-items-center rounded-lg bg-brand-soft text-brand-blue"><Upload /></span><span><span className="block font-bold text-ink">{proofName ?? "Upload screenshot or receipt"}</span><span className="text-[11px]">PNG, JPG or PDF (max 5MB)</span></span></span>
-              <span className="rounded-[8px] border border-border-soft bg-white px-3 py-1.5 text-[11px] font-extrabold text-ink-soft">Choose file</span>
-              <input ref={fileRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => setProofName(e.target.files?.[0]?.name ?? null)} />
-            </label>
-          </Field>
-          <div className="flex flex-col items-center justify-between gap-3 rounded-[12px] bg-brand-soft/40 p-3.5 sm:flex-row">
-            <p className="text-[11px] leading-relaxed text-ink-soft"><span className="font-extrabold text-ink">This payment will be submitted for approval.</span><br />Approval will be handled by a different designated staff member.</p>
-            <button type="submit" disabled={busy} className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-[10px] bg-brand-blue px-5 text-[13px] font-extrabold text-white transition hover:bg-brand-dark disabled:opacity-70"><Send />{busy ? "Submitting…" : "Submit for approval"}</button>
-          </div>
-        </form>
-      )}
-    </section>
-  );
-}
 
 // ---------------------------------------------------------------------------- Approval workflow
 function ApprovalCard({ data, onApprove, onReject, scrollAll }: { data: FinanceData; onApprove: (id: string) => void; onReject: (id: string) => void; scrollAll: () => void }) {
@@ -434,47 +317,223 @@ function IssueFeesCard({ data, onDone, onErr }: { data: FinanceData; onDone: (n:
 }
 
 // ---------------------------------------------------------------------------- Invoices & receipts
-function InvoicesReceiptsCard({ data, onGenerateInvoice, onGenerateReceipt }: { data: FinanceData; onGenerateInvoice: () => void; onGenerateReceipt: () => void }) {
+// Filterable, selectable list with print/download for both invoices and receipts.
+function InvoicesReceiptsCard({ data }: { data: FinanceData }) {
   const [tab, setTab] = useState<"invoices" | "receipts">("invoices");
-  const invTone = (s: string): "green" | "amber" | "red" => (s === "paid" ? "green" : s === "partially_paid" ? "amber" : "red");
-  const invLabel = (s: string) => (s === "paid" ? "Paid" : s === "partially_paid" ? "Partially paid" : "Unpaid");
   return (
-    <section className="flex flex-col rounded-2xl border border-border-soft bg-white p-5">
-      <div className="mb-3 flex items-center justify-between"><h2 className="flex items-center gap-2 font-display text-[16px] font-semibold"><span className="text-brand-green"><Receipt /></span>Invoices &amp; receipts</h2></div>
-      <div className="mb-3 flex gap-4 border-b border-border-soft">
-        {(["invoices", "receipts"] as const).map((t) => <button key={t} onClick={() => setTab(t)} className={`-mb-px border-b-2 pb-2 text-[12px] font-extrabold capitalize transition ${tab === t ? "border-brand-blue text-brand-blue" : "border-transparent text-ink-soft hover:text-ink"}`}>Recent {t}</button>)}
+    <section className="grid gap-[18px]">
+      <div className="flex gap-4 border-b border-border-soft">
+        {(["invoices", "receipts"] as const).map((t) => <button key={t} onClick={() => setTab(t)} className={`-mb-px border-b-2 pb-2 text-[13px] font-extrabold capitalize transition ${tab === t ? "border-brand-blue text-brand-blue" : "border-transparent text-ink-soft hover:text-ink"}`}>{t}</button>)}
       </div>
-      <div className="flex-1">
-        {tab === "invoices" ? (
-          data.invoices.length === 0 ? <Empty>No invoices yet. Issue a fee to create some.</Empty> : (
-            <ul className="grid gap-1.5">{data.invoices.slice(0, 5).map((i) => (
-              <li key={i.id} className="flex items-center gap-3 rounded-xl border border-border-soft p-2.5">
-                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[#fbeee3] text-[#b9540f]"><Receipt /></span>
-                <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><code className="text-[11px] font-extrabold text-ink">{i.no}</code><Pill tone={invTone(i.status)}>{invLabel(i.status)}</Pill></div><div className="truncate text-[11px] text-ink-soft">{i.student} · {i.description} · {i.date}</div></div>
-                <div className="shrink-0 text-right text-[12px] font-extrabold text-ink">{naira(i.amount)}</div>
-              </li>
-            ))}</ul>
-          )
-        ) : (
-          data.receipts.length === 0 ? <Empty>No receipts yet. Approved payments appear here.</Empty> : (
-            <ul className="grid gap-1.5">{data.receipts.slice(0, 5).map((r) => (
-              <li key={r.id} className="flex items-center gap-3 rounded-xl border border-border-soft p-2.5">
-                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-green/10 text-brand-green"><Receipt /></span>
-                <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><code className="text-[11px] font-extrabold text-ink">{r.no}</code><Pill tone="blue">Issued</Pill></div><div className="truncate text-[11px] text-ink-soft">{r.student} · {r.method} · {r.date}</div></div>
-                <div className="shrink-0 text-right text-[12px] font-extrabold text-ink">{naira(r.amount)}</div>
-                {r.token && <a href={`/r/${r.token}`} target="_blank" rel="noreferrer" title="Open receipt" className="grid size-7 shrink-0 place-items-center rounded-md text-ink-soft transition hover:bg-paper hover:text-brand-blue"><Download /></a>}
-              </li>
-            ))}</ul>
-          )
-        )}
-      </div>
-      <div className="mt-4 grid grid-cols-2 gap-2 border-t border-border-soft pt-4">
-        <button onClick={onGenerateInvoice} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-[10px] border border-border-soft text-[12px] font-extrabold text-brand-blue transition hover:bg-brand-soft"><Doc />Generate invoice</button>
-        <button onClick={onGenerateReceipt} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-[10px] border border-border-soft text-[12px] font-extrabold text-brand-blue transition hover:bg-brand-soft"><Receipt />Generate receipt</button>
-      </div>
+      {tab === "invoices" ? <InvoiceReportTab data={data} /> : <ReceiptReportTab data={data} />}
     </section>
   );
 }
+
+// Small selection helper shared by both tabs.
+function useSelection() {
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const toggle = (id: string) => setSel((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const setAll = (ids: string[], on: boolean) => setSel(on ? new Set(ids) : new Set());
+  const clear = () => setSel(new Set());
+  return { sel, toggle, setAll, clear };
+}
+
+function ExportBar({ count, allSelected, onToggleAll, selCount, onSelected, onAll, allLabel, note }: { count: number; allSelected: boolean; onToggleAll: () => void; selCount: number; onSelected: () => void; onAll: () => void; allLabel: string; note: string }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-paper/60 px-2.5 py-1.5">
+      <label className="flex cursor-pointer items-center gap-2 text-[11px] font-bold text-ink-soft"><input type="checkbox" checked={allSelected} onChange={onToggleAll} className="size-3.5 accent-brand-blue" />{selCount > 0 ? `${selCount} selected` : "Select all on this page"}</label>
+      <div className="flex items-center gap-2">
+        <span className="hidden text-[11px] text-ink-soft sm:inline">{note}</span>
+        <button onClick={onSelected} disabled={selCount === 0} className="inline-flex items-center gap-1.5 rounded-[8px] border border-border-soft bg-white px-2.5 py-1.5 text-[11px] font-extrabold text-brand-blue transition hover:bg-brand-soft disabled:opacity-40"><Download />Selected</button>
+        <button onClick={onAll} disabled={count === 0} className="inline-flex items-center gap-1.5 rounded-[8px] bg-brand-blue px-2.5 py-1.5 text-[11px] font-extrabold text-white transition hover:bg-brand-dark disabled:opacity-40"><Download />{allLabel}</button>
+      </div>
+    </div>
+  );
+}
+
+function InvoiceReportTab({ data }: { data: FinanceData }) {
+  const classes = useMemo(() => data.classCounts.map((c) => c.className), [data.classCounts]);
+  const terms = useMemo(() => [...new Set(data.fees.map((f) => f.termLabel).filter(Boolean) as string[])], [data.fees]);
+  const [className, setClassName] = useState("");
+  const [term, setTerm] = useState("");
+  const [status, setStatus] = useState("");
+  const [rows, setRows] = useState<InvoiceReportRow[] | null>(null);
+  const [matched, setMatched] = useState(0);
+  const [cap, setCap] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const { sel, toggle, setAll, clear } = useSelection();
+
+  const load = useCallback(async () => {
+    setBusy(true); setErr(null);
+    const r = await getInvoiceReport({ className: className || undefined, termLabel: term || undefined, status: status || undefined });
+    setBusy(false);
+    if ("error" in r) { setErr(r.error); setRows([]); return; }
+    setRows(r.rows); setMatched(r.matched); setCap(r.cap); clear();
+  }, [className, term, status]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [load]);
+
+  const totals = useMemo(() => (rows ?? []).reduce((a, r) => ({ total: a.total + r.total, paid: a.paid + r.paid, outstanding: a.outstanding + r.outstanding }), { total: 0, paid: 0, outstanding: 0 }), [rows]);
+  const shown = rows ?? [];
+  const allSelected = shown.length > 0 && shown.every((r) => sel.has(r.id));
+  const printSelected = () => { if (sel.size) window.open(`/invoice/print?ids=${[...sel].join(",")}`, "_blank"); };
+  const printAll = () => { const p = new URLSearchParams({ report: "1" }); if (className) p.set("class", className); if (term) p.set("term", term); if (status) p.set("status", status); window.open(`/invoice/print?${p.toString()}`, "_blank"); };
+  const stTone = (s: string): "green" | "amber" | "red" => (s === "paid" ? "green" : s === "partially_paid" ? "amber" : "red");
+  const stLabel = (s: string) => (s === "paid" ? "Paid" : s === "partially_paid" ? "Partially paid" : "Unpaid");
+  const truncated = matched > cap;
+
+  return (
+    <div className="grid gap-[18px]">
+      <div className="rounded-2xl border border-border-soft bg-white p-5">
+        <div className="grid gap-3.5 sm:grid-cols-3">
+          <Field label="Class"><select value={className} onChange={(e) => setClassName(e.target.value)} className={selectCls}><option value="">All classes</option>{classes.map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
+          <Field label="Term"><select value={term} onChange={(e) => setTerm(e.target.value)} className={selectCls}><option value="">All terms</option>{terms.map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
+          <Field label="Status"><select value={status} onChange={(e) => setStatus(e.target.value)} className={selectCls}><option value="">Any status</option><option value="outstanding">Unpaid</option><option value="partially_paid">Partially paid</option><option value="paid">Paid</option></select></Field>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+          <Stat label="Bills" value={busy ? "…" : String(matched)} />
+          <Stat label="Invoiced" value={compactNaira(totals.total)} color="#178a4c" />
+          <Stat label="Collected" value={compactNaira(totals.paid)} color="#2159e8" />
+          <Stat label="Outstanding" value={compactNaira(totals.outstanding)} color="#b9540f" />
+        </div>
+        {err && <div className="mt-3 rounded-[12px] border border-[#f3c2c2] bg-[#fdeeee] px-3.5 py-2.5 text-[12px] font-bold text-[#b3261e]">{err}</div>}
+      </div>
+
+      <div className="rounded-2xl border border-border-soft bg-white p-5">
+        {shown.length > 0 && <div className="mb-3"><ExportBar count={matched} allSelected={allSelected} onToggleAll={() => setAll(shown.map((r) => r.id), !allSelected)} selCount={sel.size} onSelected={printSelected} onAll={printAll} allLabel={`Download all (${Math.min(matched, cap)})`} note={truncated ? `First ${cap} of ${matched}` : "Print/save as one PDF"} /></div>}
+        {rows === null ? <div className="py-10 text-center text-[12px] text-ink-soft">Loading…</div> : rows.length === 0 ? <Empty>No invoices match this filter.</Empty> : (
+          <>
+            {/* Mobile: stacked cards */}
+            <ul className="grid gap-2 md:hidden">{shown.slice(0, 50).map((r) => (
+              <li key={r.id} className={`flex items-start gap-2.5 rounded-xl border p-3 ${sel.has(r.id) ? "border-brand-blue bg-brand-soft/30" : "border-border-soft"}`}>
+                <input type="checkbox" checked={sel.has(r.id)} onChange={() => toggle(r.id)} className="mt-0.5 size-3.5 shrink-0 accent-brand-blue" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2"><span className="truncate font-bold text-ink">{r.student}</span><Pill tone={stTone(r.status)}>{stLabel(r.status)}</Pill></div>
+                  <div className="mt-0.5 truncate text-[11px] text-ink-soft">{r.className ?? "-"}{r.billName ? ` · ${r.billName}` : ""}{r.termLabel ? ` · ${r.termLabel}` : ""}</div>
+                  <div className="mt-1.5 flex items-center justify-between text-[12px]"><span className="text-ink-soft">Total <b className="text-ink">{naira(r.total)}</b></span><span className="text-ink-soft">Due <b className="text-[#b9540f]">{naira(r.outstanding)}</b></span></div>
+                </div>
+                <a href={`/invoice/${r.id}`} target="_blank" rel="noreferrer" title="Open invoice" className="grid size-8 shrink-0 place-items-center rounded-md border border-border-soft text-ink-soft transition hover:bg-paper hover:text-brand-blue"><Download /></a>
+              </li>
+            ))}</ul>
+            {/* Desktop: table */}
+            <div className="-mx-2 hidden overflow-x-auto md:block">
+              <table className="w-full min-w-[560px] text-left text-[12px]">
+                <thead><tr className="border-b border-border-soft text-[10px] uppercase tracking-wide text-ink-soft"><th className="px-2 py-2"></th><th className="px-2 py-2 font-bold">Student</th><th className="px-2 py-2 font-bold">Class</th><th className="px-2 py-2 font-bold">Bill</th><th className="px-2 py-2 text-right font-bold">Total</th><th className="px-2 py-2 text-right font-bold">Outstanding</th><th className="px-2 py-2 font-bold">Status</th><th className="px-2 py-2 text-right font-bold">Open</th></tr></thead>
+                <tbody>{shown.slice(0, 50).map((r) => (
+                  <tr key={r.id} className={`border-b border-border-soft last:border-0 ${sel.has(r.id) ? "bg-brand-soft/30" : "hover:bg-paper/60"}`}>
+                    <td className="px-2 py-2.5"><input type="checkbox" checked={sel.has(r.id)} onChange={() => toggle(r.id)} className="size-3.5 accent-brand-blue" /></td>
+                    <td className="px-2 py-2.5 font-bold text-ink">{r.student}</td>
+                    <td className="px-2 py-2.5 text-ink-soft">{r.className ?? "-"}</td>
+                    <td className="px-2 py-2.5 text-ink-soft">{r.billName ?? "-"}{r.termLabel ? ` · ${r.termLabel}` : ""}</td>
+                    <td className="px-2 py-2.5 text-right font-bold text-ink">{naira(r.total)}</td>
+                    <td className="px-2 py-2.5 text-right font-bold text-[#b9540f]">{naira(r.outstanding)}</td>
+                    <td className="px-2 py-2.5"><Pill tone={stTone(r.status)}>{stLabel(r.status)}</Pill></td>
+                    <td className="px-2 py-2.5"><div className="flex justify-end"><a href={`/invoice/${r.id}`} target="_blank" rel="noreferrer" title="Open invoice" className="grid size-7 place-items-center rounded-md text-ink-soft transition hover:bg-paper hover:text-brand-blue"><Download /></a></div></td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+            {shown.length > 50 && <p className="mt-3 text-center text-[11px] text-ink-soft">Preview shows 50 of {shown.length}. Use Download all for the full set.</p>}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReceiptReportTab({ data }: { data: FinanceData }) {
+  const classes = useMemo(() => data.classCounts.map((c) => c.className), [data.classCounts]);
+  const terms = useMemo(() => [...new Set(data.fees.map((f) => f.termLabel).filter(Boolean) as string[])], [data.fees]);
+  const [className, setClassName] = useState("");
+  const [term, setTerm] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [rows, setRows] = useState<ReceiptReportRow[] | null>(null);
+  const [matched, setMatched] = useState(0);
+  const [cap, setCap] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const { sel, toggle, setAll, clear } = useSelection();
+
+  const load = useCallback(async () => {
+    setBusy(true); setErr(null);
+    const r = await getReceiptReport({ className: className || undefined, termLabel: term || undefined, from: from || undefined, to: to || undefined });
+    setBusy(false);
+    if ("error" in r) { setErr(r.error); setRows([]); return; }
+    setRows(r.rows); setMatched(r.matched); setCap(r.cap); clear();
+  }, [className, term, from, to]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [load]);
+
+  const total = useMemo(() => (rows ?? []).reduce((a, r) => a + r.amount, 0), [rows]);
+  const shown = rows ?? [];
+  const allSelected = shown.length > 0 && shown.every((r) => sel.has(r.id));
+  const printSelected = () => { if (sel.size) window.open(`/receipt/print?ids=${[...sel].join(",")}`, "_blank"); };
+  const printAll = () => { const p = new URLSearchParams({ report: "1" }); if (className) p.set("class", className); if (term) p.set("term", term); if (from) p.set("from", from); if (to) p.set("to", to); window.open(`/receipt/print?${p.toString()}`, "_blank"); };
+  const truncated = matched > cap;
+
+  return (
+    <div className="grid gap-[18px]">
+      <div className="rounded-2xl border border-border-soft bg-white p-5">
+        <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+          <Field label="Class"><select value={className} onChange={(e) => setClassName(e.target.value)} className={selectCls}><option value="">All classes</option>{classes.map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
+          <Field label="Term"><select value={term} onChange={(e) => setTerm(e.target.value)} className={selectCls}><option value="">All terms</option>{terms.map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
+          <Field label="From"><input type="date" value={from} max={to || todayStr()} onChange={(e) => setFrom(e.target.value)} className={inputCls} /></Field>
+          <Field label="To"><input type="date" value={to} min={from} max={todayStr()} onChange={(e) => setTo(e.target.value)} className={inputCls} /></Field>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-2.5">
+          <Stat label="Receipts" value={busy ? "…" : String(matched)} />
+          <Stat label="Total collected" value={compactNaira(total)} color="#178a4c" />
+        </div>
+        {err && <div className="mt-3 rounded-[12px] border border-[#f3c2c2] bg-[#fdeeee] px-3.5 py-2.5 text-[12px] font-bold text-[#b3261e]">{err}</div>}
+      </div>
+
+      <div className="rounded-2xl border border-border-soft bg-white p-5">
+        {shown.length > 0 && <div className="mb-3"><ExportBar count={matched} allSelected={allSelected} onToggleAll={() => setAll(shown.map((r) => r.id), !allSelected)} selCount={sel.size} onSelected={printSelected} onAll={printAll} allLabel={`Download all (${Math.min(matched, cap)})`} note={truncated ? `First ${cap} of ${matched}` : "Print/save as one PDF"} /></div>}
+        {rows === null ? <div className="py-10 text-center text-[12px] text-ink-soft">Loading…</div> : rows.length === 0 ? <Empty>No receipts match this filter.</Empty> : (
+          <>
+            {/* Mobile: stacked cards */}
+            <ul className="grid gap-2 md:hidden">{shown.slice(0, 50).map((r) => (
+              <li key={r.id} className={`flex items-start gap-2.5 rounded-xl border p-3 ${sel.has(r.id) ? "border-brand-blue bg-brand-soft/30" : "border-border-soft"}`}>
+                <input type="checkbox" checked={sel.has(r.id)} onChange={() => toggle(r.id)} className="mt-0.5 size-3.5 shrink-0 accent-brand-blue" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2"><span className="truncate font-bold text-ink">{r.student}</span><span className="shrink-0 font-extrabold text-ink">{naira(r.amount)}</span></div>
+                  <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-ink-soft"><code className="font-extrabold text-ink-soft">{r.no}</code><span>·</span><span className="capitalize">{r.method}</span></div>
+                  <div className="mt-0.5 truncate text-[11px] text-ink-soft">{r.className ?? "-"} · {r.date}</div>
+                </div>
+                <a href={r.token ? `/r/${r.token}` : `/receipt/${r.id}`} target="_blank" rel="noreferrer" title="Open receipt" className="grid size-8 shrink-0 place-items-center rounded-md border border-border-soft text-ink-soft transition hover:bg-paper hover:text-brand-blue"><Download /></a>
+              </li>
+            ))}</ul>
+            {/* Desktop: table */}
+            <div className="-mx-2 hidden overflow-x-auto md:block">
+              <table className="w-full min-w-[520px] text-left text-[12px]">
+                <thead><tr className="border-b border-border-soft text-[10px] uppercase tracking-wide text-ink-soft"><th className="px-2 py-2"></th><th className="px-2 py-2 font-bold">Receipt</th><th className="px-2 py-2 font-bold">Student</th><th className="px-2 py-2 font-bold">Class</th><th className="px-2 py-2 font-bold">Method</th><th className="px-2 py-2 text-right font-bold">Amount</th><th className="px-2 py-2 font-bold">Date</th><th className="px-2 py-2 text-right font-bold">Open</th></tr></thead>
+                <tbody>{shown.slice(0, 50).map((r) => (
+                  <tr key={r.id} className={`border-b border-border-soft last:border-0 ${sel.has(r.id) ? "bg-brand-soft/30" : "hover:bg-paper/60"}`}>
+                    <td className="px-2 py-2.5"><input type="checkbox" checked={sel.has(r.id)} onChange={() => toggle(r.id)} className="size-3.5 accent-brand-blue" /></td>
+                    <td className="px-2 py-2.5"><code className="text-[11px] font-extrabold text-ink">{r.no}</code></td>
+                    <td className="px-2 py-2.5 font-bold text-ink">{r.student}</td>
+                    <td className="px-2 py-2.5 text-ink-soft">{r.className ?? "-"}</td>
+                    <td className="px-2 py-2.5 capitalize text-ink-soft">{r.method}</td>
+                    <td className="px-2 py-2.5 text-right font-bold text-ink">{naira(r.amount)}</td>
+                    <td className="px-2 py-2.5 text-ink-soft">{r.date}</td>
+                    <td className="px-2 py-2.5"><div className="flex justify-end"><a href={r.token ? `/r/${r.token}` : `/receipt/${r.id}`} target="_blank" rel="noreferrer" title="Open receipt" className="grid size-7 place-items-center rounded-md text-ink-soft transition hover:bg-paper hover:text-brand-blue"><Download /></a></div></td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+            {shown.length > 50 && <p className="mt-3 text-center text-[11px] text-ink-soft">Preview shows 50 of {shown.length}. Use Download all for the full set.</p>}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, color }: { label: string; value: string; color?: string }) {
+  return <div className="rounded-xl border border-border-soft bg-paper/50 px-3 py-2.5"><div className="text-[10px] font-bold uppercase tracking-wide text-ink-soft">{label}</div><div className="mt-0.5 font-display text-[16px] font-bold" style={color ? { color } : undefined}>{value}</div></div>;
+}
+const compactNaira = (n: number) => (n >= 1_000_000 ? `₦${(n / 1_000_000).toFixed(2).replace(/\.00$/, "")}M` : n >= 1000 ? `₦${(n / 1000).toFixed(0)}k` : `₦${Math.round(n)}`);
 
 // ---------------------------------------------------------------------------- Payments queue table
 function PaymentsQueueCard({ data }: { data: FinanceData }) {
@@ -491,22 +550,37 @@ function PaymentsQueueCard({ data }: { data: FinanceData }) {
         <h2 className="flex items-center gap-2 font-display text-[16px] font-semibold"><span className="text-brand-green"><Card2 /></span>Recent payments &amp; approval queue</h2>
         <select value={filter} onChange={(e) => { setFilter(e.target.value); setPage(1); }} className="rounded-[10px] border border-border-soft bg-white px-2.5 py-1.5 text-[11px] font-bold text-ink-soft outline-none"><option value="all">All</option><option value="pending_approval">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select>
       </div>
-      {filtered.length === 0 ? <Empty>No payments yet.</Empty> : (
-        <div className="-mx-2 flex-1 overflow-x-auto">
-          <table className="w-full min-w-[420px] text-left text-[12px] md:min-w-[640px]">
-            <thead><tr className="border-b border-border-soft text-[10px] uppercase tracking-wide text-ink-soft"><th className="px-2 py-2 font-bold">Student</th><th className="hidden px-2 py-2 font-bold sm:table-cell">Fee type</th><th className="px-2 py-2 font-bold">Amount</th><th className="hidden px-2 py-2 font-bold lg:table-cell">Method</th><th className="hidden px-2 py-2 font-bold lg:table-cell">Recorded by</th><th className="hidden px-2 py-2 font-bold lg:table-cell">Approver</th><th className="px-2 py-2 font-bold">Status</th><th className="hidden px-2 py-2 font-bold md:table-cell">Date</th><th className="px-2 py-2 text-right font-bold">Action</th></tr></thead>
+      {filtered.length === 0 ? <Empty>No payments yet.</Empty> : (<>
+        {/* Mobile: stacked cards */}
+        <ul className="grid flex-1 gap-2 md:hidden">{slice.map((p) => (
+          <li key={p.id} className="rounded-xl border border-border-soft p-3">
+            <div className="flex items-center justify-between gap-2"><span className="truncate font-bold text-ink">{p.student}</span><Pill tone={p.status === "approved" ? "green" : p.status === "rejected" ? "red" : "amber"}>{p.status === "approved" ? "Approved" : p.status === "rejected" ? "Rejected" : "Pending"}</Pill></div>
+            <div className="mt-0.5 truncate text-[11px] text-ink-soft">{p.description || "Payment"} · <span className="capitalize">{p.method}</span> · {p.date}</div>
+            <div className="mt-1.5 flex items-center justify-between gap-2">
+              <span className="font-extrabold text-ink">{naira(p.amount)}</span>
+              <div className="flex gap-1">
+                {p.proofKey && <a href={`/api/proof/${p.id}`} target="_blank" rel="noreferrer" title="View proof" className="grid size-8 place-items-center rounded-md border border-border-soft text-ink-soft transition hover:bg-paper hover:text-brand-blue"><Eye /></a>}
+                {p.status === "approved" && (p.receiptKey || p.id) && <a href={p.receiptKey ? `/r/${p.receiptKey}` : `/receipt/${p.id}`} target="_blank" rel="noreferrer" title="Receipt" className="grid size-8 place-items-center rounded-md border border-border-soft text-ink-soft transition hover:bg-paper hover:text-brand-blue"><Download /></a>}
+              </div>
+            </div>
+          </li>
+        ))}</ul>
+        {/* Desktop: table */}
+        <div className="-mx-2 hidden flex-1 overflow-x-auto md:block">
+          <table className="w-full min-w-[640px] text-left text-[12px]">
+            <thead><tr className="border-b border-border-soft text-[10px] uppercase tracking-wide text-ink-soft"><th className="px-2 py-2 font-bold">Student</th><th className="px-2 py-2 font-bold">Fee type</th><th className="px-2 py-2 font-bold">Amount</th><th className="hidden px-2 py-2 font-bold lg:table-cell">Method</th><th className="hidden px-2 py-2 font-bold lg:table-cell">Recorded by</th><th className="hidden px-2 py-2 font-bold lg:table-cell">Approver</th><th className="px-2 py-2 font-bold">Status</th><th className="px-2 py-2 font-bold">Date</th><th className="px-2 py-2 text-right font-bold">Action</th></tr></thead>
             <tbody>{slice.map((p) => (
               <tr key={p.id} className="border-b border-border-soft last:border-0 hover:bg-paper/60">
                 <td className="px-2 py-2.5 font-bold text-ink">{p.student}</td>
-                <td className="hidden px-2 py-2.5 text-ink-soft sm:table-cell">{p.description || "-"}</td>
+                <td className="px-2 py-2.5 text-ink-soft">{p.description || "-"}</td>
                 <td className="px-2 py-2.5 font-extrabold text-ink">{naira(p.amount)}</td>
                 <td className="hidden px-2 py-2.5 capitalize text-ink-soft lg:table-cell">{p.method}</td>
                 <td className="hidden px-2 py-2.5 text-ink-soft lg:table-cell">{p.recordedBy}</td>
                 <td className="hidden px-2 py-2.5 text-ink-soft lg:table-cell">{p.approver ?? <span className="text-ink-soft/60">-</span>}</td>
                 <td className="px-2 py-2.5"><Pill tone={p.status === "approved" ? "green" : p.status === "rejected" ? "red" : "amber"}>{p.status === "approved" ? "Approved" : p.status === "rejected" ? "Rejected" : "Pending approval"}</Pill></td>
-                <td className="hidden px-2 py-2.5 text-ink-soft md:table-cell">{p.date}</td>
+                <td className="px-2 py-2.5 text-ink-soft">{p.date}</td>
                 <td className="px-2 py-2.5"><div className="flex justify-end gap-1">
-                  {p.proofKey && <a href={p.proofKey} target="_blank" rel="noreferrer" title="View proof" className="grid size-7 place-items-center rounded-md text-ink-soft transition hover:bg-paper hover:text-brand-blue"><Eye /></a>}
+                  {p.proofKey && <a href={`/api/proof/${p.id}`} target="_blank" rel="noreferrer" title="View proof" className="grid size-7 place-items-center rounded-md text-ink-soft transition hover:bg-paper hover:text-brand-blue"><Eye /></a>}
                   {p.status === "approved" && (p.receiptKey || p.id) && <a href={p.receiptKey ? `/r/${p.receiptKey}` : `/receipt/${p.id}`} target="_blank" rel="noreferrer" title="Receipt" className="grid size-7 place-items-center rounded-md text-ink-soft transition hover:bg-paper hover:text-brand-blue"><Download /></a>}
                   {!p.proofKey && p.status !== "approved" && <span className="text-ink-soft/50">-</span>}
                 </div></td>
@@ -514,7 +588,7 @@ function PaymentsQueueCard({ data }: { data: FinanceData }) {
             ))}</tbody>
           </table>
         </div>
-      )}
+      </>)}
       {filtered.length > 0 && (
         <div className="mt-4 flex items-center justify-between text-[12px] text-ink-soft">
           <span>Showing {(cur - 1) * per + 1} to {Math.min(cur * per, filtered.length)} of {filtered.length}</span>
@@ -576,11 +650,8 @@ function StudentPicker({ students, value, onChange }: { students: Student[]; val
 // ---------------------------------------------------------------------------- icons (18px inline)
 const svg = (p: React.ReactNode) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" className="size-[18px]">{p}</svg>;
 const Wallet = () => svg(<><path d="M3 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v1H5a2 2 0 0 0-2 2z" /><path d="M3 8v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2" /><circle cx="16" cy="13" r="1.2" fill="currentColor" /></>);
-const Alert = () => svg(<><path d="M10.3 3.7 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.7a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></>);
-const Clock = () => svg(<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>);
 const Chart = () => svg(<><path d="M3 3v18h18" /><path d="M7 14l3-3 3 3 4-5" /></>);
 const Receipt = () => svg(<><path d="M5 3v18l2-1 2 1 2-1 2 1 2-1 2 1V3l-2 1-2-1-2 1-2-1-2 1-2-1Z" /><path d="M9 8h6M9 12h6" /></>);
-const Bell = () => svg(<><path d="M6 8a6 6 0 0 1 12 0c0 7 3 7 3 9H3c0-2 3-2 3-9Z" /><path d="M10 21h4" /></>);
 const Doc = () => svg(<><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></>);
 const Card2 = () => svg(<><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18" /></>);
 const Shield = () => svg(<><path d="M12 3l8 3v5c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z" /><path d="M9 12l2 2 4-4" /></>);

@@ -15,35 +15,58 @@ import { logAudit } from "@/lib/audit";
 
 const QR_GRACE_MS = 10_000; // 10s window to tolerate local cellular latency
 const STAFF_ROLES = ["teacher", "principal", "vice_principal", "bursar", "school_admin"];
+const ACCESS_DISABLED = "Your staff access is inactive. Please contact your school admin.";
+// Only leadership can run the attendance terminal (it lives on a dedicated admin device). Teachers
+// clock in *at* it (PIN/QR) but can't open it themselves.
+const ADMIN_TERMINAL_ROLES = ["school_admin", "principal", "vice_principal"];
+// A null status means no staff profile (e.g. the owner-admin) — only an explicit non-active profile is blocked.
+const isActive = (status: string | null | undefined) => !status || status === "active";
 
 async function ctx() {
   const s = await auth.api.getSession({ headers: await headers() });
   if (!s) return null;
-  const [m] = await db.select().from(memberships).where(eq(memberships.userId, s.user.id)).limit(1);
+  const [m] = await db.select({ schoolId: memberships.schoolId, role: memberships.role, status: staffProfiles.status, tz: schools.timezone })
+    .from(memberships)
+    .innerJoin(schools, eq(schools.id, memberships.schoolId))
+    .leftJoin(staffProfiles, and(eq(staffProfiles.userId, memberships.userId), eq(staffProfiles.schoolId, memberships.schoolId)))
+    .where(eq(memberships.userId, s.user.id)).limit(1);
   if (!m) return null;
-  return { userId: s.user.id, schoolId: m.schoolId, role: m.role };
+  return { userId: s.user.id, schoolId: m.schoolId, role: m.role, status: m.status, tz: m.tz || "Africa/Lagos" };
 }
 
-function startOfToday() { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }
+// Midnight "today" in the school's timezone, as a UTC instant — so a late-night clock-in is counted
+// on the correct local day even when the server runs in UTC.
+function startOfTodayTz(tz: string): Date {
+  const now = new Date();
+  const ymd = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  const asUTC = new Date(`${ymd}T00:00:00Z`);
+  const offsetMs = new Date(now.toLocaleString("en-US", { timeZone: tz })).getTime() - new Date(now.toLocaleString("en-US", { timeZone: "UTC" })).getTime();
+  return new Date(asUTC.getTime() - offsetMs);
+}
 
 const r2Configured = () => !!process.env.R2_ACCOUNT_ID && !!process.env.R2_ACCESS_KEY_ID && !!process.env.R2_BUCKET;
 
-// Fallback when R2/queue aren't configured (local/dev): write the selfie under public/uploads.
+// Fallback when R2/queue aren't configured (local/dev): write the selfie to private-uploads (NOT
+// /public — selfies are staff PII) and store the bare filename. Served via /api/attendance-photo.
 async function saveSelfieLocally(dataUrl: string, logId: string): Promise<string | null> {
   const m = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/s.exec(dataUrl);
   if (!m) return null;
-  const ext = (m[1].split("/")[1] || "jpg").replace("jpeg", "jpg");
-  const dir = path.join(process.cwd(), "public", "uploads", "attendance");
+  const ext = (m[1].split("/")[1] || "jpg").replace("jpeg", "jpg").replace(/[^a-z0-9]/gi, "") || "jpg";
+  const dir = path.join(process.cwd(), "private-uploads", "attendance");
   await mkdir(dir, { recursive: true });
   const name = `${logId}.${ext}`;
   await writeFile(path.join(dir, name), Buffer.from(m[2], "base64"));
-  return `/uploads/attendance/${name}`;
+  return name;
 }
 
+// Resolve a stored snapshot value to a servable URL: R2 uploads are already absolute URLs; local
+// selfies are bare filenames served through the auth-gated route.
+const snapshotUrlFor = (logId: string, stored: string | null) => (stored ? (/^https?:\/\//.test(stored) ? stored : `/api/attendance-photo/${logId}`) : null);
+
 // Clock-in unless the teacher's last action today was already a clock-in (then it's a clock-out).
-async function nextDirection(teacherId: string, schoolId: string): Promise<"clock_in" | "clock_out"> {
+async function nextDirection(teacherId: string, schoolId: string, tz: string): Promise<"clock_in" | "clock_out"> {
   const [last] = await db.select({ direction: teacherAttendanceLogs.direction }).from(teacherAttendanceLogs)
-    .where(and(eq(teacherAttendanceLogs.teacherId, teacherId), eq(teacherAttendanceLogs.schoolId, schoolId), gte(teacherAttendanceLogs.timestamp, startOfToday())))
+    .where(and(eq(teacherAttendanceLogs.teacherId, teacherId), eq(teacherAttendanceLogs.schoolId, schoolId), gte(teacherAttendanceLogs.timestamp, startOfTodayTz(tz))))
     .orderBy(desc(teacherAttendanceLogs.timestamp)).limit(1);
   return last?.direction === "clock_in" ? "clock_out" : "clock_in";
 }
@@ -58,7 +81,7 @@ export async function getAttendanceData(): Promise<AttendanceData | { error: str
   const [rows, staffCount, mine] = await Promise.all([
     db.select({ id: teacherAttendanceLogs.id, teacherId: teacherAttendanceLogs.teacherId, name: users.name, direction: teacherAttendanceLogs.direction, method: teacherAttendanceLogs.verificationMethod, ts: teacherAttendanceLogs.timestamp, snapshotUrl: teacherAttendanceLogs.snapshotUrl })
       .from(teacherAttendanceLogs).innerJoin(users, eq(users.id, teacherAttendanceLogs.teacherId))
-      .where(and(eq(teacherAttendanceLogs.schoolId, c.schoolId), gte(teacherAttendanceLogs.timestamp, startOfToday())))
+      .where(and(eq(teacherAttendanceLogs.schoolId, c.schoolId), gte(teacherAttendanceLogs.timestamp, startOfTodayTz(c.tz))))
       .orderBy(desc(teacherAttendanceLogs.timestamp)).limit(200),
     db.select({ n: sql<number>`count(*)::int` }).from(staffProfiles).where(eq(staffProfiles.schoolId, c.schoolId)),
     db.select({ pin: staffProfiles.gatePinHash }).from(staffProfiles).where(and(eq(staffProfiles.userId, c.userId), eq(staffProfiles.schoolId, c.schoolId))).limit(1),
@@ -68,7 +91,7 @@ export async function getAttendanceData(): Promise<AttendanceData | { error: str
   let present = 0;
   for (const d of latest.values()) if (d === "clock_in") present++;
   return {
-    logs: rows.map((r) => ({ id: r.id, teacher: r.name, direction: r.direction, method: r.method, time: new Date(r.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), snapshotUrl: r.snapshotUrl })),
+    logs: rows.map((r) => ({ id: r.id, teacher: r.name, direction: r.direction, method: r.method, time: new Date(r.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), snapshotUrl: snapshotUrlFor(r.id, r.snapshotUrl) })),
     staffTotal: Number(staffCount[0]?.n ?? 0), clockedIn: latest.size, present, myPinSet: !!mine[0]?.pin, canManage: c.role === "school_admin",
   };
 }
@@ -80,7 +103,7 @@ export async function getMyAttendance(): Promise<MyAttendance | { error: string 
   const c = await ctx();
   if (!c) return { error: "Not authorised." };
   const [todayRows, mine, recent] = await Promise.all([
-    db.select({ direction: teacherAttendanceLogs.direction, ts: teacherAttendanceLogs.timestamp }).from(teacherAttendanceLogs).where(and(eq(teacherAttendanceLogs.teacherId, c.userId), gte(teacherAttendanceLogs.timestamp, startOfToday()))).orderBy(desc(teacherAttendanceLogs.timestamp)).limit(1),
+    db.select({ direction: teacherAttendanceLogs.direction, ts: teacherAttendanceLogs.timestamp }).from(teacherAttendanceLogs).where(and(eq(teacherAttendanceLogs.teacherId, c.userId), gte(teacherAttendanceLogs.timestamp, startOfTodayTz(c.tz)))).orderBy(desc(teacherAttendanceLogs.timestamp)).limit(1),
     db.select({ pin: staffProfiles.gatePinHash }).from(staffProfiles).where(and(eq(staffProfiles.userId, c.userId), eq(staffProfiles.schoolId, c.schoolId))).limit(1),
     db.select({ direction: teacherAttendanceLogs.direction, method: teacherAttendanceLogs.verificationMethod, ts: teacherAttendanceLogs.timestamp }).from(teacherAttendanceLogs).where(eq(teacherAttendanceLogs.teacherId, c.userId)).orderBy(desc(teacherAttendanceLogs.timestamp)).limit(10),
   ]);
@@ -100,8 +123,9 @@ export async function selfClockIn(): Promise<{ ok: true; direction: "clock_in" |
   if (!c) return { error: "Not authorised." };
   const [sp] = await db.select({ id: staffProfiles.id }).from(staffProfiles).where(and(eq(staffProfiles.userId, c.userId), eq(staffProfiles.schoolId, c.schoolId))).limit(1);
   if (!sp) return { error: "Only staff can clock in." };
+  if (!isActive(c.status)) return { error: ACCESS_DISABLED };
   try {
-    const direction = await nextDirection(c.userId, c.schoolId);
+    const direction = await nextDirection(c.userId, c.schoolId, c.tz);
     await db.insert(teacherAttendanceLogs).values({ schoolId: c.schoolId, teacherId: c.userId, direction, verificationMethod: "self_portal" });
     await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: `attendance.${direction}`, entityType: "Attendance", metadata: { method: "self_portal" } });
     return { ok: true, direction, at: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
@@ -159,9 +183,12 @@ export async function getTeacherAttendanceReport(from: string, to: string): Prom
   return rows;
 }
 
-// ---- Rotating QR (public; the terminal fetches a fresh token every 5s) -----------------------
-export async function getQrToken(): Promise<{ token: string }> {
-  return { token: signQrToken() };
+// ---- Rotating QR — the terminal must be signed into the school; the token is bound to that school.
+export async function getQrToken(): Promise<{ token: string } | { error: string }> {
+  const c = await ctx();
+  if (!c) return { error: "Sign this terminal in to your school to show the clock-in code." };
+  if (!ADMIN_TERMINAL_ROLES.includes(c.role)) return { error: "Only an admin can open the attendance terminal. Sign in on the school's admin device." };
+  return { token: signQrToken(c.schoolId) };
 }
 
 const qrSchema = z.object({ token: z.string().min(10) });
@@ -171,14 +198,16 @@ export async function handleQrClockIn(input: { token: string }): Promise<{ ok: t
   const c = await ctx();
   if (!c) return { error: "Sign in on your phone, then scan again." };
   if (!STAFF_ROLES.includes(c.role)) return { error: "Only staff can clock in." };
+  if (!isActive(c.status)) return { error: ACCESS_DISABLED };
 
   const decoded = verifyQrToken(parsed.data.token);
   if (!decoded) return { error: "Invalid or tampered code. Scan the live code on the terminal." };
+  if (decoded.sid !== c.schoolId) return { error: "That code belongs to a different school's terminal." };
   const drift = Date.now() - decoded.ts;
   if (Math.abs(drift) > QR_GRACE_MS) return { error: "That code has expired. Scan the current code on the terminal." };
 
   try {
-    const direction = await nextDirection(c.userId, c.schoolId);
+    const direction = await nextDirection(c.userId, c.schoolId, c.tz);
     await db.insert(teacherAttendanceLogs).values({ schoolId: c.schoolId, teacherId: c.userId, direction, verificationMethod: "qr_scan" });
     await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: `attendance.${direction}`, entityType: "Attendance", metadata: { method: "qr_scan" } });
     return { ok: true, direction, at: new Date().toLocaleTimeString() };
@@ -203,7 +232,7 @@ export async function setClockInPin(input: { pin: string }): Promise<{ ok: true 
 // ---- Kiosk: teacher name-picker (runs under the terminal's school session) -------------------
 export async function getKioskTeachers(): Promise<{ id: string; name: string; hasPin: boolean }[]> {
   const c = await ctx();
-  if (!c) return [];
+  if (!c || !ADMIN_TERMINAL_ROLES.includes(c.role)) return [];
   const rows = await db.select({ id: users.id, name: users.name, pin: staffProfiles.gatePinHash })
     .from(staffProfiles).innerJoin(users, eq(users.id, staffProfiles.userId))
     .where(eq(staffProfiles.schoolId, c.schoolId)).orderBy(users.name);
@@ -221,15 +250,17 @@ export async function handleKioskPinClockIn(input: { teacherId: string; pin: str
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid submission." };
   const c = await ctx();
   if (!c) return { error: "Terminal not authorised. Sign the tablet in to the school." };
+  if (!ADMIN_TERMINAL_ROLES.includes(c.role)) return { error: "This device isn't an admin terminal." };
   const { teacherId, pin, snapshot } = parsed.data;
 
-  const [row] = await db.select({ name: users.name, pin: staffProfiles.gatePinHash }).from(staffProfiles).innerJoin(users, eq(users.id, staffProfiles.userId))
+  const [row] = await db.select({ name: users.name, pin: staffProfiles.gatePinHash, status: staffProfiles.status }).from(staffProfiles).innerJoin(users, eq(users.id, staffProfiles.userId))
     .where(and(eq(staffProfiles.userId, teacherId), eq(staffProfiles.schoolId, c.schoolId))).limit(1);
   if (!row?.pin) return { error: "No PIN set for this teacher yet." };
+  if (!isActive(row.status)) return { error: "This staff member's access is inactive." };
   if (!(await bcrypt.compare(pin, row.pin))) return { error: "Incorrect PIN." };
 
   try {
-    const direction = await nextDirection(teacherId, c.schoolId);
+    const direction = await nextDirection(teacherId, c.schoolId, c.tz);
     const [log] = await db.insert(teacherAttendanceLogs).values({ schoolId: c.schoolId, teacherId, direction, verificationMethod: "kiosk_pin" }).returning({ id: teacherAttendanceLogs.id });
     if (r2Configured()) {
       // Production: offload the R2 upload so the tablet responds instantly on a slow network.

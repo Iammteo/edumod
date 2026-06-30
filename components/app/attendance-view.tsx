@@ -20,7 +20,7 @@ export function StaffClockInView() {
     const r = await getAttendanceData();
     if ("error" in r) setErr(r.error); else { setData(r); setErr(null); }
   }, []);
-  useEffect(() => { load(); const t = setInterval(load, 8000); return () => clearInterval(t); }, [load]);
+  useEffect(() => { load(); const tick = () => { if (!document.hidden) load(); }; const t = setInterval(tick, 20000); document.addEventListener("visibilitychange", tick); return () => { clearInterval(t); document.removeEventListener("visibilitychange", tick); }; }, [load]);
 
   async function runExport(format: "pdf" | "excel" | "csv") {
     if (from > to) { setErr("The “From” date must be on or before the “To” date."); return; }

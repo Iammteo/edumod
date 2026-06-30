@@ -7,8 +7,11 @@ import { AddStudentForm, ResetStudentPasswordForm } from "./people-forms";
 import { BarChart, DonutChart } from "./charts";
 import { InviteWizard } from "./invite-wizard";
 import { FinanceArea, type FinanceSection } from "./finance-view";
+import { DeviceApprovals } from "./device-approvals";
+import { SessionManager } from "./session-manager";
+import { TwoFactorSettings } from "./two-factor-settings";
 
-const FINANCE_SUB: [FinanceSection, string][] = [["overview", "Overview"], ["record", "Record payment"], ["approvals", "Approvals"], ["bills", "Bills & fee structures"], ["invoices", "Invoices & receipts"], ["classsummary", "Class finance summary"], ["overpayments", "Overpayments & refunds"], ["reports", "Reports & exports"]];
+const FINANCE_SUB: [FinanceSection, string][] = [["record", "Record payment"], ["approvals", "Approvals"], ["bills", "Bills & fee structures"], ["invoices", "Invoices & receipts"], ["classsummary", "Class finance summary"], ["overpayments", "Overpayments & refunds"], ["reports", "Report card"]];
 import { StudentProfilePage } from "./student-profile";
 import { EmptyArt } from "./illustration";
 import { CalendarCard } from "./calendar";
@@ -69,7 +72,7 @@ function Avatar({ name, size = 30 }: { name: string; size?: number }) { const c 
 
 export function AdminApp({ userName, school, students, staff, audit, overview, initialSection = "overview" }: Props) {
   const [active, setActive] = useState(initialSection);
-  const [financeSection, setFinanceSection] = useState<FinanceSection>("overview");
+  const [financeSection, setFinanceSection] = useState<FinanceSection | null>(null);
   const [open, setOpen] = useState(false);
   const [logo, setLogo] = useState<string | null>(school.logoKey);
   const [details, setDetails] = useState(school);
@@ -142,10 +145,10 @@ export function AdminApp({ userName, school, students, staff, audit, overview, i
         <main className="overflow-x-hidden p-4 pb-24 sm:p-6 sm:pb-24 lg:px-7 lg:py-6 lg:pb-6">
           {active === "overview" && <Overview userName={userName} school={details} students={students} staff={staff} audit={audit} overview={overview} notifOpen={notifOpen} setNotifOpen={setNotifOpen} goto={navigate} onNotif={onNotif} onSchoolChange={(patch) => setDetails((d) => ({ ...d, ...patch }))} />}
           {active === "students" && <Students students={students} openStudentId={deepStudent} onConsumed={() => setDeepStudent(null)} />}
-          {active === "staff" && <StaffView staff={staff} />}
-          {active === "settings" && <Settings school={details} logo={logo} onLogo={setLogo} onSaved={setDetails} />}
+          {active === "staff" && <><DeviceApprovals /><StaffView staff={staff} /></>}
+          {active === "settings" && <div className="grid gap-[18px]"><Settings school={details} logo={logo} onLogo={setLogo} onSaved={setDetails} /><TwoFactorSettings /><SessionManager /></div>}
           {active === "audit" && <AuditLog audit={audit} />}
-          {active === "finance" && <FinanceArea section={financeSection} />}
+          {active === "finance" && <FinanceArea section={financeSection} onPick={setFinanceSection} />}
           {active === "attendance" && <StudentAttendanceView />}
           {["exams", "timetable", "communications", "reports"].includes(active) && <ComingSoon name={NAV.find((n) => n[0] === active)![1]} />}
         </main>
