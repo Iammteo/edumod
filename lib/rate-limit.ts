@@ -55,3 +55,18 @@ export async function clearFailures(keys: string[]): Promise<void> {
     console.error("[rate-limit] clear failed:", e);
   }
 }
+
+// Single-use guard: returns true the FIRST time a key is seen within ttl, false on any repeat. Used to
+// make rotating QR clock-in tokens one-shot so a shared/photographed code can't be reused. Fails OPEN
+// (returns true) when Redis is unavailable, so legitimate clock-ins are never blocked.
+export async function consumeOnce(key: string, ttlSeconds: number): Promise<boolean> {
+  const r = redis();
+  if (!r) return true;
+  try {
+    const ok = await r.set(`once:${key}`, "1", "EX", ttlSeconds, "NX");
+    return ok === "OK";
+  } catch (e) {
+    console.error("[rate-limit] consumeOnce failed (failing open):", e);
+    return true;
+  }
+}

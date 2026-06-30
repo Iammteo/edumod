@@ -19,8 +19,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) return new Response("Forbidden", { status: 403 });
-  const [m] = await db.select({ schoolId: memberships.schoolId }).from(memberships).where(and(eq(memberships.userId, session.user.id), eq(memberships.schoolId, log.schoolId))).limit(1);
-  if (!m) return new Response("Forbidden", { status: 403 });
+  // Selfies are sensitive staff PII — restrict to school leadership, not every colleague.
+  const [m] = await db.select({ role: memberships.role }).from(memberships).where(and(eq(memberships.userId, session.user.id), eq(memberships.schoolId, log.schoolId))).limit(1);
+  if (!m || !["school_admin", "principal", "vice_principal"].includes(m.role)) return new Response("Forbidden", { status: 403 });
 
   try {
     const buf = await readFile(path.join(process.cwd(), "private-uploads", "attendance", log.snapshotUrl));

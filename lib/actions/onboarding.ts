@@ -10,6 +10,7 @@ import { accounts, memberships, schools, staffProfiles, users } from "@/db/schem
 import { hashPassword } from "./people";
 import { logAudit } from "@/lib/audit";
 import { getOrCreateDeviceId, trustDevice, deviceLabel } from "@/lib/device-trust";
+import { sniffImage } from "@/lib/image-upload";
 
 export type Invite = { name: string; email: string; schoolName: string; role: string; employmentType: string | null; jobRole: string | null; isClassTeacher: boolean; assignedClass: string | null; subjects: string[]; teachingClasses: string[] };
 
@@ -58,14 +59,15 @@ export async function uploadStaffPhoto(form: FormData): Promise<{ ok: true; url:
   if (!session) return { error: "Please finish setting your password first." };
   const file = form.get("photo");
   if (!(file instanceof File) || file.size === 0) return { error: "Please choose an image." };
-  if (!file.type.startsWith("image/")) return { error: "That file isn't an image." };
   if (file.size > 5_000_000) return { error: "Image must be under 5MB." };
-  const ext = (file.type.split("/")[1] || "png").replace(/[^a-z0-9]/g, "").replace("jpeg", "jpg");
+  const buf = Buffer.from(await file.arrayBuffer());
+  const ext = sniffImage(buf);
+  if (!ext) return { error: "That file isn't a supported image (PNG, JPG, GIF or WebP)." };
   try {
     const dir = path.join(process.cwd(), "public", "uploads");
     await mkdir(dir, { recursive: true });
     const filename = `user-${session.user.id}.${ext}`;
-    await writeFile(path.join(dir, filename), Buffer.from(await file.arrayBuffer()));
+    await writeFile(path.join(dir, filename), buf);
     const url = `/uploads/${filename}`;
     await db.update(users).set({ image: url, updatedAt: new Date() }).where(eq(users.id, session.user.id));
     return { ok: true, url };

@@ -24,6 +24,23 @@ export const auth = betterAuth({
   // Idle longer than 2h → must sign in again. Combined with rememberMe:false, the cookie also dies
   // when the browser closes.
   session: { expiresIn: 60 * 60 * 2, updateAge: 60 * 30 },
+  // Throttle the auth endpoints (better-auth's limiter is otherwise off in dev and lax in prod). The
+  // custom per-account lockout in studentLogin/staffLogin still applies on top of these per-IP caps;
+  // these specifically cover the email-login, OTP and 2FA paths that bypass the server actions.
+  rateLimit: {
+    enabled: true,
+    window: 60,
+    max: 120,
+    customRules: {
+      "/sign-in/email": { window: 60, max: 5 },
+      "/sign-in/username": { window: 60, max: 5 },
+      "/email-otp/send-verification-otp": { window: 60, max: 3 },
+      "/email-otp/verify-email": { window: 60, max: 6 },
+      "/two-factor/verify-totp": { window: 60, max: 6 },
+      "/forget-password": { window: 60, max: 3 },
+      "/reset-password": { window: 60, max: 6 },
+    },
+  },
   // Device trust backstop: blocks session creation for staff signing in (any method - email, social,
   // Staff ID) from a device an admin hasn't approved. The login page sets the device cookie; this
   // hook only reads it (it must not set cookies - a thrown block would drop the Set-Cookie).
@@ -59,6 +76,9 @@ export const auth = betterAuth({
     sendOnSignUp: true,
     autoSignInAfterVerification: true,
     sendVerificationEmail: async ({ user, url }) => {
+      // Staff are invited with their own onboarding email (which sets their password and verifies them
+      // via acceptInvite), so don't also send them a generic "verify your email" message.
+      if ((user as { accountType?: string }).accountType === "staff") return;
       void sendEmail({
         to: user.email,
         subject: "Verify your Edumod email",

@@ -42,6 +42,7 @@ export type StudentAttendance = { canMark: boolean; rows: AttnRow[]; counts: Att
 export async function getStudentAttendance(className: string, date: string): Promise<StudentAttendance | { error: string }> {
   const c = await ctx();
   if (!c) return { error: "Not authorised." };
+  if (!c.isAdmin && c.assignedClass !== className) return { error: "Not authorised." };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: "Invalid date." };
   const [roster, marks, teacherRow] = await Promise.all([
     db.select({ id: students.id, fn: students.firstName, ln: students.lastName, admissionNo: students.admissionNo, phone: students.guardianPhone }).from(students).where(and(eq(students.schoolId, c.schoolId), eq(students.className, className))).orderBy(students.firstName),
@@ -72,7 +73,8 @@ export async function getAttendanceAnalytics(className: string, date: string): P
   // Non-admins only see their own class's rates (a class teacher shouldn't see every class's numbers).
   const limitToClass = !c.isAdmin;
   const myClass = c.assignedClass;
-  if (limitToClass && !myClass) return { byClass: [], week: [], recent: [] }; // a teacher with no class has nothing to show
+  // A non-admin may only see their own class's analytics — never another class they pass in.
+  if (limitToClass && myClass !== className) return { byClass: [], week: [], recent: [] };
   const rosterWhere = limitToClass ? and(eq(students.schoolId, c.schoolId), eq(students.className, myClass!)) : eq(students.schoolId, c.schoolId);
   const dayWhere = limitToClass ? and(eq(studentAttendance.schoolId, c.schoolId), eq(studentAttendance.attendanceDate, date), eq(studentAttendance.className, myClass!)) : and(eq(studentAttendance.schoolId, c.schoolId), eq(studentAttendance.attendanceDate, date));
   const [rosterCounts, dayMarks, weekMarks, recentRows] = await Promise.all([

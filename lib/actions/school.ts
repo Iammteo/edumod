@@ -8,6 +8,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { schools, memberships } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
+import { sniffImage } from "@/lib/image-upload";
 
 async function adminCtx(): Promise<{ schoolId: string; userId: string } | null> {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -67,14 +68,15 @@ export async function uploadSchoolLogo(form: FormData): Promise<{ ok: true; logo
   if (!schoolId) return { error: "Only an admin can update the logo." };
   const file = form.get("logo");
   if (!(file instanceof File) || file.size === 0) return { error: "Please choose an image." };
-  if (!file.type.startsWith("image/")) return { error: "That file isn't an image." };
   if (file.size > 2_000_000) return { error: "Image must be under 2MB." };
-  const ext = (file.type.split("/")[1] || "png").replace(/[^a-z0-9]/g, "").replace("jpeg", "jpg");
+  const buf = Buffer.from(await file.arrayBuffer());
+  const ext = sniffImage(buf);
+  if (!ext) return { error: "That file isn't a supported image (PNG, JPG, GIF or WebP)." };
   try {
     const dir = path.join(process.cwd(), "public", "uploads");
     await mkdir(dir, { recursive: true });
     const filename = `school-${schoolId}.${ext}`;
-    await writeFile(path.join(dir, filename), Buffer.from(await file.arrayBuffer()));
+    await writeFile(path.join(dir, filename), buf);
     const logoKey = `/uploads/${filename}`;
     await db.update(schools).set({ logoKey, updatedAt: new Date() }).where(eq(schools.id, schoolId));
     return { ok: true, logoUrl: logoKey };
