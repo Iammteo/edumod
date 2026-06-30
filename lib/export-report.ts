@@ -12,21 +12,25 @@ function download(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+// HTML-escape all user-supplied data before it goes into the exported document.
+function esc(s: unknown) { return String(s ?? "").replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]!)); }
+
 function cell(c: ReportColumn, r: ReportRow) {
   const v = String(r[c.key] ?? "");
-  if (c.image) return v ? `<img src="${v}" style="height:40px;width:40px;object-fit:cover;border-radius:6px" />` : "-";
-  return v;
+  // Only allow same-origin image paths (uploads / api) as <img src>, escaped — never arbitrary URLs.
+  if (c.image) return v && /^\/(uploads|api)\//.test(v) ? `<img src="${esc(v)}" style="height:40px;width:40px;object-fit:cover;border-radius:6px" />` : "-";
+  return esc(v);
 }
 function tableHtml(cols: ReportColumn[], rows: ReportRow[]) {
-  const head = cols.map((c) => `<th style="text-align:left;border:1px solid #ccc;padding:6px 10px;background:#eef2f9">${c.label}</th>`).join("");
+  const head = cols.map((c) => `<th style="text-align:left;border:1px solid #ccc;padding:6px 10px;background:#eef2f9">${esc(c.label)}</th>`).join("");
   const body = rows.map((r) => `<tr>${cols.map((c) => `<td style="border:1px solid #ccc;padding:6px 10px">${cell(c, r)}</td>`).join("")}</tr>`).join("");
   return `<table style="border-collapse:collapse;width:100%;font-size:13px"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 function docHtml(title: string, subtitle: string, cols: ReportColumn[], rows: ReportRow[], summary?: ReportSection) {
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head><body style="font-family:Arial,Helvetica,sans-serif;color:#10213f">
-    <h2 style="margin:0">${title}</h2><p style="color:#5b6b86;margin:4px 0 14px">${subtitle}</p>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title></head><body style="font-family:Arial,Helvetica,sans-serif;color:#10213f">
+    <h2 style="margin:0">${esc(title)}</h2><p style="color:#5b6b86;margin:4px 0 14px">${esc(subtitle)}</p>
     ${tableHtml(cols, rows)}
-    ${summary ? `<h3 style="margin:22px 0 8px">${summary.title}</h3>${tableHtml(summary.columns, summary.rows)}` : ""}
+    ${summary ? `<h3 style="margin:22px 0 8px">${esc(summary.title)}</h3>${tableHtml(summary.columns, summary.rows)}` : ""}
   </body></html>`;
 }
 function csvBlock(cols: ReportColumn[], rows: ReportRow[]) {

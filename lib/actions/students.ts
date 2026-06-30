@@ -12,6 +12,7 @@ import { gradeFor } from "@/lib/grading";
 import { generateStudentPassword } from "@/lib/identity/password";
 import { hashPassword } from "./people";
 import { encryptSecret, decryptSecret } from "@/lib/crypto";
+import { sniffImage } from "@/lib/image-upload";
 
 async function ctx() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -20,7 +21,10 @@ async function ctx() {
   if (!m) return null;
   const canManage = m.role === "school_admin" || m.role === "teacher" || m.role === "principal" || m.role === "vice_principal";
   const canApprove = m.role === "school_admin" || m.canApprovePayments;
-  return { userId: session.user.id, schoolId: m.schoolId, role: m.role, canManage, canApprove };
+  // Students/parents must never reach staff readers; only leadership may bulk-recover login secrets.
+  const isStaff = ["school_admin", "principal", "vice_principal", "bursar", "teacher"].includes(m.role);
+  const canViewSecrets = ["school_admin", "principal", "vice_principal"].includes(m.role);
+  return { userId: session.user.id, schoolId: m.schoolId, role: m.role, canManage, canApprove, isStaff, canViewSecrets };
 }
 
 export type Guardian = { name: string; relationship: string; phone: string; email: string; occupation: string; address: string };
@@ -73,6 +77,7 @@ const rcpNo = (id: string) => `RCP-${id.slice(0, 8).toUpperCase()}`;
 export async function getStudentProfile(studentId: string): Promise<StudentProfile | { error: string }> {
   const c = await ctx();
   if (!c) return { error: "Not authorised." };
+  if (!c.isStaff) return { error: "Not authorised." };
   const [stu] = await db.select().from(students).where(and(eq(students.id, studentId), eq(students.schoolId, c.schoolId))).limit(1);
   if (!stu) return { error: "Student not found." };
 
@@ -257,7 +262,7 @@ export async function getStudentPassword(studentId: string): Promise<{ ok: true;
 export type StudentCredential = { id: string; name: string; admissionNo: string; className: string | null; password: string | null };
 export async function getStudentCredentials(input: { className?: string }): Promise<{ ok: true; rows: StudentCredential[]; matched: number } | { error: string }> {
   const c = await ctx();
-  if (!c?.canManage) return { error: "You don't have permission to view student logins." };
+  if (!c?.canViewSecrets) return { error: "Only an admin can view student logins in bulk." };
   const className = input.className?.trim();
   const where = className ? and(eq(students.schoolId, c.schoolId), eq(students.className, className)) : eq(students.schoolId, c.schoolId);
   const all = await db.select({ id: students.id, fn: students.firstName, ln: students.lastName, admissionNo: students.admissionNo, className: students.className, enc: students.credentialEnc }).from(students).where(where).orderBy(asc(students.className), asc(students.firstName));
@@ -345,14 +350,15 @@ export async function uploadStudentPhoto(form: FormData): Promise<{ ok: true; ur
   if (!stu) return { error: "Student not found." };
   const file = form.get("photo");
   if (!(file instanceof File) || file.size === 0) return { error: "Please choose an image." };
-  if (!file.type.startsWith("image/")) return { error: "That file isn't an image." };
   if (file.size > 5_000_000) return { error: "Image must be under 5MB." };
-  const ext = (file.type.split("/")[1] || "png").replace(/[^a-z0-9]/g, "").replace("jpeg", "jpg");
+  const buf = Buffer.from(await file.arrayBuffer());
+  const ext = sniffImage(buf);
+  if (!ext) return { error: "That file isn't a supported image (PNG, JPG, GIF or WebP)." };
   try {
     const dir = path.join(process.cwd(), "public", "uploads");
     await mkdir(dir, { recursive: true });
     const name = `student-${studentId}.${ext}`;
-    await writeFile(path.join(dir, name), Buffer.from(await file.arrayBuffer()));
+    await writeFile(path.join(dir, name), buf);
     const key = `/uploads/${name}?t=${Date.now()}`;
     await db.update(students).set({ photoKey: `/uploads/${name}`, updatedAt: new Date() }).where(eq(students.id, studentId));
     return { ok: true, url: key };

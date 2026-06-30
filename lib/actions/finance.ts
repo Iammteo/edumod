@@ -20,6 +20,9 @@ const PROOF_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": 
 // Staff allowed to record payments / issue fees. Bursars and senior staff manage finance, not just
 // the owner-admin.
 const FINANCE_ROLES = ["school_admin", "bursar", "principal", "vice_principal"];
+// Hard ceiling on any single fee item / payment, to stop fat-finger and fraudulent 10-figure entries
+// (₦100,000,000). Amounts are numeric(14,2) in the DB; this keeps values sane and finite.
+const MAX_AMOUNT = 100_000_000;
 
 async function ctx() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -66,6 +69,7 @@ async function studentLabel(studentId: string): Promise<{ student: string; class
 export async function getFinanceData(): Promise<FinanceData | { error: string }> {
   const c = await ctx();
   if (!c) return { error: "Not authorised." };
+  if (!c.canRecord) return { error: "Not authorised." };
   const recorder = users;
   const approver = alias(users, "approver");
   const [rows, studentRows, feeRows, invoiceRows, paidRows, classRows, invByClass, paidByClass] = await Promise.all([
@@ -146,6 +150,7 @@ export type InvoiceReportRow = { id: string; studentId: string; no: string; stud
 export async function getInvoiceReport(filter: { className?: string; termLabel?: string; status?: string }): Promise<{ rows: InvoiceReportRow[]; matched: number; cap: number } | { error: string }> {
   const c = await ctx();
   if (!c) return { error: "Not authorised." };
+  if (!c.canRecord) return { error: "Not authorised." };
   const { bills, matched } = await loadInvoiceBillsByFilter(c.schoolId, filter);
   const rows: InvoiceReportRow[] = bills.map((b) => ({ id: b.id, studentId: b.studentId, no: b.no, student: b.studentName, className: b.className, billName: b.billName, termLabel: b.termLabel, total: b.total, paid: b.paid, outstanding: b.outstanding, status: billStatus(b) }));
   return { rows, matched, cap: EXPORT_CAP };
@@ -155,6 +160,7 @@ export async function getInvoiceReport(filter: { className?: string; termLabel?:
 export async function getReceiptReport(filter: { className?: string; termLabel?: string; from?: string; to?: string }): Promise<{ rows: ReceiptReportRow[]; matched: number; cap: number } | { error: string }> {
   const c = await ctx();
   if (!c) return { error: "Not authorised." };
+  if (!c.canRecord) return { error: "Not authorised." };
   const { rows, matched } = await loadReceiptReport(c.schoolId, filter);
   return { rows, matched, cap: RECEIPT_EXPORT_CAP };
 }
@@ -163,6 +169,7 @@ export async function getReceiptReport(filter: { className?: string; termLabel?:
 export async function sendInvoiceReminder(invoiceId: string): Promise<{ ok: true } | { error: string }> {
   const c = await ctx();
   if (!c) return { error: "Not authorised." };
+  if (!c.canRecord) return { error: "Not authorised." };
   const [inv] = await db.select({ amount: invoices.amount, description: invoices.description, sf: students.firstName, sl: students.lastName, gEmail: students.guardianEmail, profile: students.profile })
     .from(invoices).innerJoin(students, eq(students.id, invoices.studentId)).where(and(eq(invoices.id, invoiceId), eq(invoices.schoolId, c.schoolId))).limit(1);
   if (!inv) return { error: "Invoice not found." };
@@ -185,7 +192,7 @@ export async function createFeeStructure(input: { name: string; termLabel?: stri
   if (!c) return { error: "Not authorised." };
   if (!c.canRecord) return { error: "You don't have permission to issue fees." };
   if (!input.name.trim()) return { error: "Give the bill a name." };
-  const items = (input.items ?? []).map((it) => ({ name: it.name.trim(), amount: Number(it.amount), mandatory: !!it.mandatory })).filter((it) => it.name && it.amount > 0);
+  const items = (input.items ?? []).map((it) => ({ name: it.name.trim(), amount: Number(it.amount), mandatory: !!it.mandatory })).filter((it) => it.name && Number.isFinite(it.amount) && it.amount > 0 && it.amount <= MAX_AMOUNT);
   if (items.length === 0) return { error: "Add at least one fee item with an amount." };
   const total = items.reduce((n, it) => n + it.amount, 0);
   const classes = (input.classes ?? []).map((s) => s.trim()).filter(Boolean);
@@ -219,12 +226,18 @@ export async function recordPayment(form: FormData): Promise<{ ok: true; approve
   const description = String(form.get("description") || "").trim();
   const invoiceId = String(form.get("invoiceId") || "").trim() || null;
   if (!studentId) return { error: "Please select a student." };
-  if (!(amount > 0)) return { error: "Enter a valid amount." };
+  if (!Number.isFinite(amount) || amount <= 0) return { error: "Enter a valid amount." };
+  if (amount > MAX_AMOUNT) return { error: "That amount is too large. Please check and re-enter." };
   if (method === "transfer" && !(form.get("proof") instanceof File && (form.get("proof") as File).size > 0)) return { error: "Proof of payment is required for transfers." };
-  // Validate the chosen invoice belongs to this school + student.
+  // Validate the chosen invoice belongs to this school + student, and that we're not over-allocating
+  // more than its outstanding balance (over-allocation is how phantom credit/refunds get manufactured;
+  // a genuine advance should be recorded as a separate non-invoiced payment).
   if (invoiceId) {
-    const [inv] = await db.select({ id: invoices.id }).from(invoices).where(and(eq(invoices.id, invoiceId), eq(invoices.schoolId, c.schoolId), eq(invoices.studentId, studentId))).limit(1);
+    const [inv] = await db.select({ id: invoices.id, amount: invoices.amount }).from(invoices).where(and(eq(invoices.id, invoiceId), eq(invoices.schoolId, c.schoolId), eq(invoices.studentId, studentId))).limit(1);
     if (!inv) return { error: "That invoice doesn't match the selected student." };
+    const [{ paid }] = await db.select({ paid: sql<string>`coalesce(sum(${payments.amount}),0)` }).from(payments).where(and(eq(payments.invoiceId, invoiceId), eq(payments.status, "approved")));
+    const outstanding = Number(inv.amount) - Number(paid);
+    if (amount > outstanding + 0.001) return { error: `That's more than the ₦${Math.max(0, outstanding).toLocaleString()} outstanding on this invoice. Record any extra as a separate payment.` };
   }
   let proofKey: string | null = null;
   const proof = form.get("proof");
@@ -253,8 +266,9 @@ export async function recordPayment(form: FormData): Promise<{ ok: true; approve
   }
 }
 
-// Maker-checker: an approver can never approve a payment they recorded (enforced here AND by a
-// DB check constraint as a backstop).
+// Maker-checker: when the school requires it, an approver can never approve a payment they recorded.
+// Enforced in-app below (the DB check constraint was dropped to allow the auto-approve path, so this
+// is the sole enforcement point).
 export async function approvePayment(id: string): Promise<{ ok: true } | { error: string }> {
   const c = await ctx();
   if (!c?.canApprove) return { error: "You don't have approval rights." };

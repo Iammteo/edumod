@@ -39,8 +39,6 @@ export function ReceiptCard({ p, school, shareToken }: { p: ReceiptData; school:
 // The receipt document itself (no page chrome) - reused for single and batch (print-all) views.
 export function ReceiptDoc({ p, school, shareToken }: { p: ReceiptData; school: ReceiptSchool; shareToken?: string | null }) {
   const no = `RCP-${p.id.slice(0, 8).toUpperCase()}`;
-  // Proofs are served through the auth-gated route; the share token lets the receipt holder view it.
-  const proofSrc = p.proofKey ? `/api/proof/${p.id}${shareToken ? `?token=${encodeURIComponent(shareToken)}` : ""}` : null;
   const naira = (n: number) => `₦${Number(n).toLocaleString()}`;
   const amount = naira(Number(p.amount));
   const date = new Date(p.approvedAt ?? p.createdAt).toLocaleDateString();
@@ -82,7 +80,6 @@ export function ReceiptDoc({ p, school, shareToken }: { p: ReceiptData; school: 
               <div className="text-right"><div className="font-bold uppercase tracking-wide text-ink-soft">Approved by</div><div className="mt-0.5 text-[13px] font-bold text-ink">{p.approvedBy ?? "-"}</div></div>
             </div>
           )}
-          {proofSrc && <div className="mt-6"><div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-ink-soft">Proof of payment</div><img src={proofSrc} alt="Proof of payment" className="max-h-72 w-full rounded-xl border border-border-soft object-contain" /></div>}
           <p className="mt-6 text-center text-[11px] text-ink-soft">This is a system-generated receipt from Edumod. Thank you.</p>
         </div>
   );

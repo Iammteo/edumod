@@ -27,9 +27,12 @@ export async function sendEmail(mail: Mail): Promise<void> {
   const tx = smtp();
   const hasResend = !!process.env.RESEND_API_KEY;
 
-  // Always log in dev (and whenever no transport is configured) so links are reachable.
-  if (process.env.NODE_ENV !== "production" || (!tx && !hasResend)) {
+  // Print the full body (incl. OTP/reset codes) ONLY in local development. In any other environment a
+  // missing transport logs metadata only, so secrets never land in staging/preview logs.
+  if (process.env.NODE_ENV === "development") {
     console.info(`[email:dev] to=${mail.to} | ${mail.subject}\n${mail.text}\n`);
+  } else if (!tx && !hasResend) {
+    console.warn(`[email] no transport configured; message to=${mail.to} subject="${mail.subject}" not sent`);
   }
 
   try {

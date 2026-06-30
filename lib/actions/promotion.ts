@@ -53,6 +53,12 @@ export async function promoteStudents(input: { moves: { studentId: string; toCla
   // Group student ids by destination so each class is one UPDATE.
   const byTarget = new Map<string, string[]>();
   for (const m of moves) (byTarget.get(m.toClass) ?? byTarget.set(m.toClass, []).get(m.toClass)!).push(m.studentId);
+  // Only allow promoting into a real class in this school (or "Graduated") — never an arbitrary
+  // free-text value that would silently orphan students from rosters/attendance/fees.
+  const valid = new Set<string>([GRADUATED]);
+  const classRows = await db.select({ cn: students.className }).from(students).where(eq(students.schoolId, c.schoolId)).groupBy(students.className);
+  for (const r of classRows) if (r.cn) valid.add(r.cn);
+  for (const t of byTarget.keys()) if (!valid.has(t)) return { error: `"${t}" isn't a class in your school.` };
   try {
     await db.transaction(async (tx) => {
       for (const [toClass, ids] of byTarget) {

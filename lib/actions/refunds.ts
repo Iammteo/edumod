@@ -7,6 +7,11 @@ import { db } from "@/lib/db";
 import { invoices, memberships, payments, refundRequests, schools, students, users } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
 
+// Distinguishes a business-rule rejection (shown to the user) from an unexpected DB error inside the
+// refund transaction.
+class RefundError extends Error {}
+const MAX_AMOUNT = 100_000_000;
+
 async function ctx() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) return null;
@@ -18,9 +23,9 @@ async function ctx() {
 
 // Credit = approved payments − amount billed − refunds already approved. Positive means overpaid.
 export async function creditBalance(studentId: string, schoolId: string): Promise<number> {
-  const [inv] = await db.select({ t: sql<string>`coalesce(sum(${invoices.amount}),0)` }).from(invoices).where(eq(invoices.studentId, studentId));
-  const [pay] = await db.select({ t: sql<string>`coalesce(sum(${payments.amount}),0)` }).from(payments).where(and(eq(payments.studentId, studentId), eq(payments.status, "approved")));
-  const [ref] = await db.select({ t: sql<string>`coalesce(sum(${refundRequests.amount}),0)` }).from(refundRequests).where(and(eq(refundRequests.studentId, studentId), eq(refundRequests.status, "approved")));
+  const [inv] = await db.select({ t: sql<string>`coalesce(sum(${invoices.amount}),0)` }).from(invoices).where(and(eq(invoices.studentId, studentId), eq(invoices.schoolId, schoolId)));
+  const [pay] = await db.select({ t: sql<string>`coalesce(sum(${payments.amount}),0)` }).from(payments).where(and(eq(payments.studentId, studentId), eq(payments.schoolId, schoolId), eq(payments.status, "approved")));
+  const [ref] = await db.select({ t: sql<string>`coalesce(sum(${refundRequests.amount}),0)` }).from(refundRequests).where(and(eq(refundRequests.studentId, studentId), eq(refundRequests.schoolId, schoolId), eq(refundRequests.status, "approved")));
   return Math.max(0, Number(pay.t) - Number(inv.t) - Number(ref.t));
 }
 
@@ -36,6 +41,7 @@ export type RefundRow = { id: string; studentId: string; student: string; amount
 export async function getOverpayments(): Promise<{ credits: OverpaymentRow[]; requests: RefundRow[]; totalCredit: number; pending: number; canManage: boolean; canApprove: boolean; requireApproval: boolean } | { error: string }> {
   const c = await ctx();
   if (!c) return { error: "Not authorised." };
+  if (!c.canManage) return { error: "Not authorised." };
   const [billed, paid, refunded, studentRows, reqRows] = await Promise.all([
     db.select({ sid: invoices.studentId, t: sql<string>`coalesce(sum(${invoices.amount}),0)` }).from(invoices).where(eq(invoices.schoolId, c.schoolId)).groupBy(invoices.studentId),
     db.select({ sid: payments.studentId, t: sql<string>`coalesce(sum(${payments.amount}),0)` }).from(payments).where(and(eq(payments.schoolId, c.schoolId), eq(payments.status, "approved"))).groupBy(payments.studentId),
@@ -66,20 +72,31 @@ export async function carryForwardCredit(studentId: string): Promise<{ ok: true 
 export async function requestRefund(input: { studentId: string; amount: number; reason?: string }): Promise<{ ok: true; approved: boolean } | { error: string }> {
   const c = await ctx();
   if (!c?.canManage) return { error: "You don't have permission to request a refund." };
+  if (!Number.isFinite(input.amount) || input.amount <= 0) return { error: "Enter a valid refund amount." };
+  if (input.amount > MAX_AMOUNT) return { error: "That refund amount is too large." };
   const [stu] = await db.select({ id: students.id }).from(students).where(and(eq(students.id, input.studentId), eq(students.schoolId, c.schoolId))).limit(1);
   if (!stu) return { error: "Student not found." };
-  const credit = await creditBalance(input.studentId, c.schoolId);
-  if (!(input.amount > 0)) return { error: "Enter a valid refund amount." };
-  if (input.amount > credit) return { error: `Refund can't exceed the credit balance of ₦${credit.toLocaleString()}.` };
-  const [open] = await db.select({ id: refundRequests.id }).from(refundRequests).where(and(eq(refundRequests.studentId, input.studentId), eq(refundRequests.status, "pending"))).limit(1);
-  if (open) return { error: "There's already a pending refund request for this student." };
   // With maker-checker off, the refund is approved immediately (no separate approval step).
   const autoApprove = !c.requireApproval;
   try {
-    await db.insert(refundRequests).values({ schoolId: c.schoolId, studentId: input.studentId, amount: input.amount.toFixed(2), reason: input.reason?.trim() || null, status: autoApprove ? "approved" : "pending", requestedByUserId: c.userId, ...(autoApprove ? { approvedByUserId: c.userId, decidedAt: new Date() } : {}) });
+    await db.transaction(async (tx) => {
+      // Serialize all refund activity for this student so two concurrent requests can't both spend the
+      // same credit. The auto-approve path inserts 'approved' directly, so a pending-row check alone
+      // wouldn't prevent a double payout — we re-derive the credit under the lock and re-check.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.studentId})::bigint)`);
+      const [billed] = await tx.select({ t: sql<string>`coalesce(sum(${invoices.amount}),0)` }).from(invoices).where(and(eq(invoices.studentId, input.studentId), eq(invoices.schoolId, c.schoolId)));
+      const [paid] = await tx.select({ t: sql<string>`coalesce(sum(${payments.amount}),0)` }).from(payments).where(and(eq(payments.studentId, input.studentId), eq(payments.schoolId, c.schoolId), eq(payments.status, "approved")));
+      const [refunded] = await tx.select({ t: sql<string>`coalesce(sum(${refundRequests.amount}),0)` }).from(refundRequests).where(and(eq(refundRequests.studentId, input.studentId), eq(refundRequests.schoolId, c.schoolId), eq(refundRequests.status, "approved")));
+      const credit = Math.max(0, Number(paid.t) - Number(billed.t) - Number(refunded.t));
+      if (input.amount > credit) throw new RefundError(`Refund can't exceed the credit balance of ₦${credit.toLocaleString()}.`);
+      const [open] = await tx.select({ id: refundRequests.id }).from(refundRequests).where(and(eq(refundRequests.studentId, input.studentId), eq(refundRequests.status, "pending"))).limit(1);
+      if (open) throw new RefundError("There's already a pending refund request for this student.");
+      await tx.insert(refundRequests).values({ schoolId: c.schoolId, studentId: input.studentId, amount: input.amount.toFixed(2), reason: input.reason?.trim() || null, status: autoApprove ? "approved" : "pending", requestedByUserId: c.userId, ...(autoApprove ? { approvedByUserId: c.userId, decidedAt: new Date() } : {}) });
+    });
     await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: autoApprove ? "refund.approved" : "refund.requested", entityType: "Finance", entityId: input.studentId, metadata: { amount: input.amount, student: await studentName(input.studentId) } });
     return { ok: true, approved: autoApprove };
-  } catch {
+  } catch (e) {
+    if (e instanceof RefundError) return { error: e.message };
     return { error: "Could not submit the refund request. Please try again." };
   }
 }

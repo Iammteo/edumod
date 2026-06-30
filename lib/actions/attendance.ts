@@ -12,6 +12,7 @@ import { memberships, schools, staffProfiles, teacherAttendanceLogs, users } fro
 import { signQrToken, verifyQrToken } from "@/lib/attendance-token";
 import { attendanceUploadQueue } from "@/lib/queues";
 import { logAudit } from "@/lib/audit";
+import { consumeOnce, isLockedOut, recordFailure, clearFailures } from "@/lib/rate-limit";
 
 const QR_GRACE_MS = 10_000; // 10s window to tolerate local cellular latency
 const STAFF_ROLES = ["teacher", "principal", "vice_principal", "bursar", "school_admin"];
@@ -78,6 +79,7 @@ export type AttendanceData = { logs: AttendanceLog[]; staffTotal: number; clocke
 export async function getAttendanceData(): Promise<AttendanceData | { error: string }> {
   const c = await ctx();
   if (!c) return { error: "Not authorised." };
+  if (!STAFF_ROLES.includes(c.role)) return { error: "Not authorised." };
   const [rows, staffCount, mine] = await Promise.all([
     db.select({ id: teacherAttendanceLogs.id, teacherId: teacherAttendanceLogs.teacherId, name: users.name, direction: teacherAttendanceLogs.direction, method: teacherAttendanceLogs.verificationMethod, ts: teacherAttendanceLogs.timestamp, snapshotUrl: teacherAttendanceLogs.snapshotUrl })
       .from(teacherAttendanceLogs).innerJoin(users, eq(users.id, teacherAttendanceLogs.teacherId))
@@ -116,22 +118,12 @@ export async function getMyAttendance(): Promise<MyAttendance | { error: string 
   };
 }
 
-// One-tap clock-in/out from the teacher's authenticated portal (recorded as self_portal so the
-// admin can tell it apart from a verified kiosk scan).
+// Self-portal clock-in is intentionally disabled: it let staff clock in from anywhere with no
+// presence check (buddy-punching). Staff must scan the terminal's live QR code instead, which binds
+// the clock-in to being physically at the terminal. Kept as a guarded stub so any stale caller fails
+// closed rather than recording an unverified entry.
 export async function selfClockIn(): Promise<{ ok: true; direction: "clock_in" | "clock_out"; at: string } | { error: string }> {
-  const c = await ctx();
-  if (!c) return { error: "Not authorised." };
-  const [sp] = await db.select({ id: staffProfiles.id }).from(staffProfiles).where(and(eq(staffProfiles.userId, c.userId), eq(staffProfiles.schoolId, c.schoolId))).limit(1);
-  if (!sp) return { error: "Only staff can clock in." };
-  if (!isActive(c.status)) return { error: ACCESS_DISABLED };
-  try {
-    const direction = await nextDirection(c.userId, c.schoolId, c.tz);
-    await db.insert(teacherAttendanceLogs).values({ schoolId: c.schoolId, teacherId: c.userId, direction, verificationMethod: "self_portal" });
-    await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: `attendance.${direction}`, entityType: "Attendance", metadata: { method: "self_portal" } });
-    return { ok: true, direction, at: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
-  } catch {
-    return { error: "Could not record. Please try again." };
-  }
+  return { error: "Clock in by scanning the live QR code on the staff terminal." };
 }
 
 // ---- Printable teacher clock-in register (by day or week) ------------------------------------
@@ -205,6 +197,9 @@ export async function handleQrClockIn(input: { token: string }): Promise<{ ok: t
   if (decoded.sid !== c.schoolId) return { error: "That code belongs to a different school's terminal." };
   const drift = Date.now() - decoded.ts;
   if (Math.abs(drift) > QR_GRACE_MS) return { error: "That code has expired. Scan the current code on the terminal." };
+  // One-shot: a given displayed code can be redeemed once, so a photographed/forwarded code can't be
+  // re-used by an absent colleague within the grace window (anti-buddy-punching).
+  if (!(await consumeOnce(`qr:${parsed.data.token}`, Math.ceil(QR_GRACE_MS / 1000) + 1))) return { error: "That code was already used. Scan the current code on the terminal." };
 
   try {
     const direction = await nextDirection(c.userId, c.schoolId, c.tz);
@@ -257,7 +252,12 @@ export async function handleKioskPinClockIn(input: { teacherId: string; pin: str
     .where(and(eq(staffProfiles.userId, teacherId), eq(staffProfiles.schoolId, c.schoolId))).limit(1);
   if (!row?.pin) return { error: "No PIN set for this teacher yet." };
   if (!isActive(row.status)) return { error: "This staff member's access is inactive." };
-  if (!(await bcrypt.compare(pin, row.pin))) return { error: "Incorrect PIN." };
+  // Cap PIN guessing per teacher/terminal (6-digit PIN = 1M space) — without this a terminal operator
+  // could brute-force a colleague's PIN.
+  const pinKeys = [`kioskpin:${c.schoolId}:${teacherId}`];
+  if (await isLockedOut(pinKeys)) return { error: "Too many incorrect PIN attempts. Please try again later." };
+  if (!(await bcrypt.compare(pin, row.pin))) { await recordFailure(pinKeys); return { error: "Incorrect PIN." }; }
+  await clearFailures(pinKeys);
 
   try {
     const direction = await nextDirection(teacherId, c.schoolId, c.tz);

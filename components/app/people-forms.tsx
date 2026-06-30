@@ -39,7 +39,7 @@ function Credentials({ title, rows, note }: { title: string; rows: [string, stri
   );
 }
 
-export function AddStudentForm() {
+export function AddStudentForm({ lockedClass }: { lockedClass?: string }) {
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<{ studentId: string; password: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -60,10 +60,17 @@ export function AddStudentForm() {
       <Field label="Student's name" name="name" placeholder="Chiamaka Nwosu" />
       <label className="grid gap-1.5">
         <span className="text-[11px] font-extrabold text-ink">Class</span>
-        <select name="className" defaultValue="" className="min-h-10 rounded-[10px] border border-border-soft bg-paper/60 px-3 text-[13px] text-ink outline-none transition focus:border-brand-blue focus:bg-white focus:ring-2 focus:ring-brand-blue/20">
-          <option value="">No class yet</option>
-          {classNames.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
+        {lockedClass ? (
+          <>
+            <input type="hidden" name="className" value={lockedClass} />
+            <div className="flex min-h-10 items-center rounded-[10px] border border-border-soft bg-paper/60 px-3 text-[13px] font-bold text-ink">{lockedClass}</div>
+          </>
+        ) : (
+          <select name="className" defaultValue="" className="min-h-10 rounded-[10px] border border-border-soft bg-paper/60 px-3 text-[13px] text-ink outline-none transition focus:border-brand-blue focus:bg-white focus:ring-2 focus:ring-brand-blue/20">
+            <option value="">No class yet</option>
+            {classNames.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        )}
       </label>
       <Submit busy={busy}>Create student</Submit>
       <Err msg={error} />

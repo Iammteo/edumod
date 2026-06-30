@@ -1,3 +1,4 @@
+import { randomInt } from "crypto";
 import { STUDENT_SEQ_PAD } from "./config";
 
 // 2-digit calendar year, zero-padded ("2026" → "26", "2000" → "00").
@@ -17,7 +18,7 @@ export function formatStudentId(year: number, seq: number, pad = STUDENT_SEQ_PAD
 // Non-sequential so it doesn't reveal enrolment order/count. The (schoolId, admissionNo) unique
 // constraint enforces uniqueness; the caller retries on collision.
 export function generateAdmissionNo(year: number): string {
-  const n = Math.floor(10000 + Math.random() * 90000); // 10000–99999 (always 5 digits)
+  const n = randomInt(10000, 100000); // 10000–99999 (always 5 digits), CSPRNG so it isn't predictable
   return `${twoDigitYear(year)}${n}`;
 }
 
