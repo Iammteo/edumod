@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Logo } from "@/components/marketing/brand";
 import { getInvite, acceptInvite, sendInviteOtp, uploadStaffPhoto, type Invite } from "@/lib/actions/onboarding";
+import { roleLabel } from "@/lib/format";
 
 const STEPS = ["Accept invitation", "Set password", "Personal information", "Upload photo", "Ready"];
 const inputCls = "min-h-11 w-full rounded-[12px] border border-border-soft bg-white px-3.5 text-[14px] text-ink outline-none transition focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/20";
-const ROLE_LABEL: Record<string, string> = { principal: "Principal", vice_principal: "Vice principal", teacher: "Teacher", secretary: "Secretary" };
 const pwScore = (p: string) => [p.length >= 8, /[A-Z]/.test(p), /[0-9]/.test(p), /[^a-zA-Z0-9]/.test(p)].filter(Boolean).length;
 
 export function Onboarding({ token }: { token: string }) {
@@ -67,7 +67,7 @@ export function Onboarding({ token }: { token: string }) {
         {step === 1 && <div className="grid gap-5 sm:grid-cols-[1fr_300px]">
           <div>
             <h2 className="font-display text-[20px] font-semibold">You&rsquo;re invited to {invite.schoolName}</h2>
-            <p className="mt-1 text-[14px] text-ink-soft">You&rsquo;ve been invited as a <strong className="text-ink">{invite.employmentType ? `${invite.employmentType} ` : ""}{ROLE_LABEL[invite.role] ?? invite.role}</strong>.</p>
+            <p className="mt-1 text-[14px] text-ink-soft">You&rsquo;ve been invited as a <strong className="text-ink">{invite.employmentType ? `${invite.employmentType} ` : ""}{roleLabel(invite.role)}</strong>.</p>
             <div className="mt-5 grid gap-3 text-[13px]">
               {invite.subjects.length > 0 && <div><span className="text-[11px] font-extrabold text-ink-soft">Assigned subjects</span><div className="mt-1 flex flex-wrap gap-1.5">{invite.subjects.map((s) => <span key={s} className="rounded-full bg-brand-soft px-2.5 py-1 text-[11px] font-bold text-brand-blue">{s}</span>)}</div></div>}
               {(invite.isClassTeacher || invite.teachingClasses.length > 0) && <div><span className="text-[11px] font-extrabold text-ink-soft">Classes</span><div className="mt-1 flex flex-wrap gap-1.5">{Array.from(new Set((invite.isClassTeacher && invite.assignedClass ? [invite.assignedClass, ...invite.teachingClasses] : invite.teachingClasses).filter(Boolean))).map((c) => <span key={c} className="rounded-full bg-paper px-2.5 py-1 text-[11px] font-bold text-ink-soft">{c}</span>)}</div></div>}
@@ -123,7 +123,7 @@ export function Onboarding({ token }: { token: string }) {
           <ul className="mt-1 grid gap-1.5 text-left text-[12px]">
             {invite.subjects.length > 0 && <li className="flex gap-2 text-ink-soft"><span className="text-brand-green">✓</span>Subjects: {invite.subjects.join(", ")}</li>}
             {invite.teachingClasses.length > 0 && <li className="flex gap-2 text-ink-soft"><span className="text-brand-green">✓</span>Classes: {invite.teachingClasses.join(", ")}</li>}
-            <li className="flex gap-2 text-ink-soft"><span className="text-brand-green">✓</span>Role: {ROLE_LABEL[invite.role] ?? invite.role}</li>
+            <li className="flex gap-2 text-ink-soft"><span className="text-brand-green">✓</span>Role: {roleLabel(invite.role)}</li>
           </ul>
           <button onClick={() => router.push("/dashboard")} className="mt-3 inline-flex min-h-11 items-center justify-center rounded-[12px] bg-brand-blue px-6 text-[14px] font-extrabold text-white transition hover:-translate-y-0.5 hover:bg-brand-dark">Go to my workspace →</button>
         </div>}

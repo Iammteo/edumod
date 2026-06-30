@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { signOut } from "@/lib/auth/client";
 import { AddStudentForm, ResetStudentPasswordForm } from "./people-forms";
 import { BarChart, DonutChart } from "./charts";
+import { roleLabel } from "@/lib/format";
 import { InviteWizard } from "./invite-wizard";
 import { FinanceArea, type FinanceSection } from "./finance-view";
 import { StudentNavProvider } from "./student-nav";
@@ -553,7 +554,6 @@ function PageBtn({ children, active, disabled, onClick }: { children: string; ac
 }
 
 /* ---------- Staff ---------- */
-const ROLE_LABEL: Record<string, string> = { school_admin: "Admin", principal: "Principal", vice_principal: "Vice principal", teacher: "Teacher", secretary: "Secretary" };
 const rank: Record<Level, number> = { none: 0, view: 1, edit: 2, approve: 3, full: 4 };
 function StaffStatusBadge({ status }: { status: string }) {
   const map: Record<string, [string, string]> = { active: ["Active", "bg-brand-green/10 text-brand-green"], pending: ["Pending", "bg-brand-soft text-brand-blue"], inactive: ["Inactive", "bg-paper text-ink-soft"], left: ["Left school", "bg-danger-soft text-danger"] };
@@ -610,7 +610,7 @@ function StaffView({ staff }: { staff: Staff[] }) {
           <thead><tr className="border-b border-border-soft text-[10px] uppercase tracking-wide text-ink-soft"><th className="py-2 font-bold">Staff member</th><th className="py-2 font-bold">Role</th><th className="py-2 font-bold">Teacher type</th><th className="py-2 font-bold">Subjects</th><th className="py-2 font-bold">Class</th><th className="py-2 font-bold">Status</th><th className="py-2 font-bold"></th></tr></thead>
           <tbody>{filtered.map((s, i) => <tr key={i} onClick={() => setSelected(s)} className="cursor-pointer border-b border-border-soft last:border-0 hover:bg-paper/60">
             <td className="py-2.5"><div className="flex items-center gap-2.5"><Avatar name={s.name} size={30} /><div><div className="font-bold text-ink">{s.name}</div><div className="text-[10px] text-ink-soft">{s.email}</div></div></div></td>
-            <td className="py-2.5"><span className="rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-extrabold text-brand-blue">{ROLE_LABEL[s.role] ?? s.role}</span></td>
+            <td className="py-2.5"><span className="rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-extrabold text-brand-blue">{roleLabel(s.role)}</span></td>
             <td className="py-2.5 text-ink-soft">{s.teacherType}</td>
             <td className="py-2.5">{s.subjects.length ? <div className="flex flex-wrap gap-1">{s.subjects.slice(0, 2).map((x) => <span key={x} className="rounded bg-paper px-1.5 py-0.5 text-[10px] font-bold text-ink-soft">{x}</span>)}{s.subjects.length > 2 && <span className="text-[10px] text-ink-soft">+{s.subjects.length - 2}</span>}</div> : <span className="text-ink-soft">-</span>}</td>
             <td className="py-2.5 text-ink-soft">{s.assignedClass ?? "-"}</td>
@@ -624,7 +624,7 @@ function StaffView({ staff }: { staff: Staff[] }) {
       {selected && <div className="fixed inset-0 z-50"><div className="absolute inset-0 bg-black/40" onClick={() => setSelected(null)} /><aside className="absolute right-0 top-0 h-full w-[min(440px,100%)] overflow-y-auto bg-white p-6 shadow-[0_0_60px_rgba(16,33,63,.2)] motion-safe:animate-[fade-up_.2s_ease]">
         <div className="mb-5 flex items-center justify-between"><h2 className="font-display text-[20px] font-semibold">Staff details</h2><button onClick={() => setSelected(null)} className="grid size-8 place-items-center rounded-lg text-ink-soft hover:bg-paper">✕</button></div>
         <div className="flex items-center gap-3.5"><Avatar name={selected.name} size={56} /><div><div className="font-display text-[17px] font-semibold">{selected.name}</div><div className="text-[12px] text-ink-soft">{selected.email}</div><div className="mt-0.5"><StaffStatusBadge status={selected.status} /></div></div></div>
-        <dl className="mt-5 grid gap-0">{[["Staff ID", selected.staffNo ?? "-"], ["Role", ROLE_LABEL[selected.role] ?? selected.role], ["Type", selected.teacherType], ["Assigned class", selected.assignedClass ?? "-"], ["Subjects", selected.subjects.join(", ") || "-"], ["Approve payments", selected.canApprove ? "Yes" : "No"]].map(([k, v]) => <div key={k} className="flex justify-between gap-4 border-b border-border-soft py-2.5 last:border-0"><dt className="text-[12px] font-bold text-ink-soft">{k}</dt><dd className="max-w-[60%] text-right text-[12px] font-bold text-ink">{k === "Staff ID" && v !== "-" ? <code className="select-all text-brand-blue">{v}</code> : v}</dd></div>)}</dl>
+        <dl className="mt-5 grid gap-0">{[["Staff ID", selected.staffNo ?? "-"], ["Role", roleLabel(selected.role)], ["Type", selected.teacherType], ["Assigned class", selected.assignedClass ?? "-"], ["Subjects", selected.subjects.join(", ") || "-"], ["Approve payments", selected.canApprove ? "Yes" : "No"]].map(([k, v]) => <div key={k} className="flex justify-between gap-4 border-b border-border-soft py-2.5 last:border-0"><dt className="text-[12px] font-bold text-ink-soft">{k}</dt><dd className="max-w-[60%] text-right text-[12px] font-bold text-ink">{k === "Staff ID" && v !== "-" ? <code className="select-all text-brand-blue">{v}</code> : v}</dd></div>)}</dl>
         {selected.role !== "school_admin" && <StaffActions staff={selected} onDone={() => { setSelected(null); router.refresh(); }} onErr={setStaffErr} />}
         {staffErr && <p className="mt-2 text-[12px] font-bold text-danger">{staffErr}</p>}
         <h3 className="mb-2 mt-6 font-display text-[15px] font-semibold">Permissions</h3>

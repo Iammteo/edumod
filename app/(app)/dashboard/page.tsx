@@ -5,7 +5,6 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { auditLogs, memberships, schools, staffProfiles, students as studentsTable, users } from "@/db/schema";
 
-const ROLE_LABEL: Record<string, string> = { principal: "Principal", vice_principal: "Vice principal", teacher: "Teacher", secretary: "Secretary" };
 
 // Turns an audit row's metadata into a specific, human-readable line (who/what/which student).
 function describeAudit(action: string, m: Record<string, unknown>): string {
@@ -30,6 +29,7 @@ function describeAudit(action: string, m: Record<string, unknown>): string {
 import { AdminApp } from "@/components/app/admin-app";
 import { StaffDashboard, StudentDashboard } from "@/components/app/dashboards";
 import { adminOverview, studentOverview } from "@/lib/dashboard";
+import { roleLabel } from "@/lib/format";
 
 export default async function DashboardPage() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -60,8 +60,8 @@ export default async function DashboardPage() {
         userName={name}
         school={{ name: school?.name ?? schoolName, schoolCode, email: school?.email ?? null, phone: school?.phone ?? null, state: school?.state ?? null, country: school?.country ?? null, address: school?.address ?? null, logoKey: school?.logoKey ?? null, requireApproval: !!school?.requireApproval, currentSession: school?.currentSession ?? "2023/2024", currentTerm: school?.currentTerm ?? "Term 2", dayStartsAt: school?.dayStartsAt ?? null, dayEndsAt: school?.dayEndsAt ?? null }}
         students={studentRows.map((s) => ({ id: s.id, name: `${s.firstName} ${s.lastName}`.trim(), admissionNo: s.admissionNo, createdAt: new Date(s.createdAt).toLocaleDateString(), className: s.className }))}
-        staff={staffRows.map((s) => ({ userId: s.userId, name: s.name, email: s.email, staffNo: s.staffNo ?? null, role: s.role, teacherType: s.isClassTeacher ? "Class teacher" : s.isTeacher ? "Subject teacher" : (ROLE_LABEL[s.role] ?? "Staff"), subjects: (s.subjects as string[]) ?? [], assignedClass: s.assignedClass ?? null, status: s.status ?? "active", canApprove: !!s.canApprove, permissions: (s.permissions as Record<string, string>) ?? {} }))}
-        audit={auditRows.map((a) => ({ action: a.action, entityType: a.entityType, entityId: a.entityId, actor: a.actorName ?? "system", actorRole: a.actorRole ? (ROLE_LABEL[a.actorRole] ?? (a.actorRole === "school_admin" ? "Admin" : a.actorRole)) : null, ts: new Date(a.createdAt).getTime(), detail: describeAudit(a.action, a.metadata as Record<string, unknown>), meta: a.metadata as Record<string, unknown> }))}
+        staff={staffRows.map((s) => ({ userId: s.userId, name: s.name, email: s.email, staffNo: s.staffNo ?? null, role: s.role, teacherType: s.isClassTeacher ? "Class teacher" : s.isTeacher ? "Subject teacher" : (roleLabel(s.role)), subjects: (s.subjects as string[]) ?? [], assignedClass: s.assignedClass ?? null, status: s.status ?? "active", canApprove: !!s.canApprove, permissions: (s.permissions as Record<string, string>) ?? {} }))}
+        audit={auditRows.map((a) => ({ action: a.action, entityType: a.entityType, entityId: a.entityId, actor: a.actorName ?? "system", actorRole: a.actorRole ? (roleLabel(a.actorRole)) : null, ts: new Date(a.createdAt).getTime(), detail: describeAudit(a.action, a.metadata as Record<string, unknown>), meta: a.metadata as Record<string, unknown> }))}
         overview={overview as Awaited<ReturnType<typeof adminOverview>>}
         restricted={role !== "admin"}
       />
