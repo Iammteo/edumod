@@ -13,6 +13,7 @@ import { generateStudentPassword } from "@/lib/identity/password";
 import { hashPassword } from "./people";
 import { encryptSecret, decryptSecret } from "@/lib/crypto";
 import { sniffImage } from "@/lib/image-upload";
+import { computeStudentFinance } from "@/lib/finance-calc";
 
 async function ctx() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -88,15 +89,10 @@ export async function getStudentProfile(studentId: string): Promise<StudentProfi
     db.select({ id: refundRequests.id, amount: refundRequests.amount, status: refundRequests.status, reason: refundRequests.reason, createdAt: refundRequests.createdAt }).from(refundRequests).where(eq(refundRequests.studentId, studentId)).orderBy(desc(refundRequests.createdAt)),
   ]);
 
-  const invoiced = invRows.reduce((n, r) => n + Number(r.amount), 0);
-  const mandatoryInvoiced = invRows.filter((r) => r.mandatory).reduce((n, r) => n + Number(r.amount), 0);
-  const optionalInvoiced = invoiced - mandatoryInvoiced;
   const paid = payRows.filter((p) => p.status === "approved").reduce((n, r) => n + Number(r.amount), 0);
   const refundedApproved = refundRows.filter((r) => r.status === "approved").reduce((n, r) => n + Number(r.amount), 0);
-  // Payments cover mandatory fees first, then optional, then become credit.
-  const outstanding = Math.max(0, mandatoryInvoiced - paid);
-  const optionalDue = Math.max(0, optionalInvoiced - Math.max(0, paid - mandatoryInvoiced));
-  const credit = Math.max(0, paid - invoiced - refundedApproved);
+  // Canonical per-student finance (mandatory-first; see lib/finance-calc.ts).
+  const { invoiced, optionalInvoiced, outstanding, optionalDue, credit } = computeStudentFinance(invRows.map((r) => ({ amount: Number(r.amount), mandatory: r.mandatory })), paid, refundedApproved);
   const refunds: RefundRow[] = refundRows.map((r) => ({ id: r.id, amount: Number(r.amount), status: r.status, reason: r.reason, date: new Date(r.createdAt).toLocaleDateString() }));
   const paidMap = new Map<string, number>();
   for (const r of paidByInv) if (r.invoiceId) paidMap.set(r.invoiceId, Number(r.paid));
