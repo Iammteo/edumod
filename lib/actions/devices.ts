@@ -1,20 +1,17 @@
 "use server";
 
-import { headers } from "next/headers";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { memberships, trustedDevices, users } from "@/db/schema";
+import { getAuthContext } from "@/lib/auth/context";
+import { trustedDevices, users } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
 
 const APPROVER_ROLES = ["school_admin", "principal", "vice_principal"];
 
 async function ctx() {
-  const s = await auth.api.getSession({ headers: await headers() });
-  if (!s) return null;
-  const [m] = await db.select({ schoolId: memberships.schoolId, role: memberships.role }).from(memberships).where(eq(memberships.userId, s.user.id)).limit(1);
-  if (!m) return null;
-  return { userId: s.user.id, schoolId: m.schoolId, role: m.role };
+  const a = await getAuthContext();
+  if (!a) return null;
+  return { userId: a.userId, schoolId: a.schoolId, role: a.role };
 }
 
 export type DeviceRow = { id: string; userId: string; staffName: string; label: string | null; status: string; lastSeenAt: string | null; createdAt: string };

@@ -7,8 +7,7 @@ import { requestRefund, carryForwardCredit, decideRefund } from "@/lib/actions/r
 import { StudentProfileEdit } from "./student-profile-edit";
 import { StudentResults } from "./student-results";
 import { Button, Alert } from "./ui";
-
-const naira = (n: number) => `₦${n.toLocaleString()}`;
+import { formatNaira as naira } from "@/lib/format";
 const initials = (s: string) => s.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("") || "?";
 const AV = ["#2159e8", "#178a4c", "#b9540f", "#6b2fb3", "#0f8a8a", "#c0392b"];
 function age(dob: string) { if (!dob) return ""; const d = new Date(dob); if (isNaN(+d)) return ""; const a = Math.floor((Date.now() - +d) / (365.25 * 864e5)); return a > 0 && a < 120 ? `${a} yrs` : ""; }

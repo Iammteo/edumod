@@ -1,4 +1,5 @@
 import { ReceiptActions } from "./receipt-actions";
+import { formatNaira as naira } from "@/lib/format";
 
 export type ReceiptData = {
   id: string;
@@ -39,7 +40,6 @@ export function ReceiptCard({ p, school, shareToken }: { p: ReceiptData; school:
 // The receipt document itself (no page chrome) - reused for single and batch (print-all) views.
 export function ReceiptDoc({ p, school, shareToken }: { p: ReceiptData; school: ReceiptSchool; shareToken?: string | null }) {
   const no = `RCP-${p.id.slice(0, 8).toUpperCase()}`;
-  const naira = (n: number) => `₦${Number(n).toLocaleString()}`;
   const amount = naira(Number(p.amount));
   const date = new Date(p.approvedAt ?? p.createdAt).toLocaleDateString();
   const hasInvoice = p.invoiceTotal != null && p.invoiceTotal > 0;

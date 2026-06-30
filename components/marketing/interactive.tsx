@@ -78,7 +78,7 @@ export function Reveal({ children, className = "", delay = 0 }: { children: Reac
 /* ---------- Testimonials carousel ---------- */
 const TESTIMONIALS = [
   { quote: "Edumod gave us one clear view of attendance and fees across all our branches. What used to take days now takes minutes.", name: "Mrs. Folake Adeyemi", role: "Head Teacher", school: "Brightfield Schools, Lagos", grad: "linear-gradient(135deg,#2159e8,#143a99)" },
-  { quote: "The maker-checker approval flow means I finally trust every number I sign off on. Reconciliation is no longer a headache.", name: "Mr. Chinedu Okafor", role: "Bursar", school: "Crestview Academy, Enugu", grad: "linear-gradient(135deg,#178a4c,#0d6b39)" },
+  { quote: "The maker-checker approval flow means I finally trust every number I sign off on. Reconciliation is no longer a headache.", name: "Mr. Chinedu Okafor", role: "Secretary", school: "Crestview Academy, Enugu", grad: "linear-gradient(135deg,#178a4c,#0d6b39)" },
   { quote: "Parents now get instant updates, and our teachers spend far more time teaching than filling registers by hand.", name: "Mrs. Aisha Bello", role: "Principal", school: "Northgate International, Abuja", grad: "linear-gradient(135deg,#b9540f,#8a3d0a)" },
   { quote: "Onboarding moved our records across safely, and the permanent audit trail gives our board real confidence.", name: "Dr. Emeka Nwosu", role: "Proprietor", school: "Summit Group of Schools, Port Harcourt", grad: "linear-gradient(135deg,#6b2fb3,#4c2080)" },
 ];

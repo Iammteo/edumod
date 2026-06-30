@@ -5,11 +5,9 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { auditLogs, memberships, schools, staffProfiles, students as studentsTable, users } from "@/db/schema";
 
-const ROLE_LABEL: Record<string, string> = { principal: "Principal", vice_principal: "Vice principal", teacher: "Teacher", bursar: "Bursar" };
 
 // Turns an audit row's metadata into a specific, human-readable line (who/what/which student).
 function describeAudit(action: string, m: Record<string, unknown>): string {
-  const naira = (v: unknown) => `₦${Number(v || 0).toLocaleString()}`;
   const str = (v: unknown) => (typeof v === "string" ? v : "");
   const cls = m.className ? ` (${str(m.className)})` : "";
   switch (action) {
@@ -30,6 +28,7 @@ function describeAudit(action: string, m: Record<string, unknown>): string {
 import { AdminApp } from "@/components/app/admin-app";
 import { StaffDashboard, StudentDashboard } from "@/components/app/dashboards";
 import { adminOverview, studentOverview } from "@/lib/dashboard";
+import { roleLabel, formatNaira as naira } from "@/lib/format";
 
 export default async function DashboardPage() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -44,12 +43,13 @@ export default async function DashboardPage() {
   const termLabel = `${school?.currentSession ?? "2023/2024"} · ${school?.currentTerm ?? "Term 2"}`;
   const schoolCode = school?.schoolCode ?? "-";
 
-  if (role === "admin") {
+  // The secretary uses the admin interface in a restricted mode (no settings/staff/finance approval).
+  if (role === "admin" || membership?.role === "secretary") {
     const sid = membership?.schoolId;
     const [studentRows, staffRows, auditRows, overview] = sid
       ? await Promise.all([
           db.select().from(studentsTable).where(eq(studentsTable.schoolId, sid)).orderBy(desc(studentsTable.createdAt)).limit(200),
-          db.select({ userId: users.id, name: users.name, email: users.email, staffNo: staffProfiles.staffNo, role: memberships.role, canApprove: memberships.canApprovePayments, isTeacher: staffProfiles.isTeacher, isClassTeacher: staffProfiles.isClassTeacher, assignedClass: staffProfiles.assignedClass, subjects: staffProfiles.subjects, status: staffProfiles.status, permissions: staffProfiles.permissions }).from(memberships).innerJoin(users, eq(users.id, memberships.userId)).leftJoin(staffProfiles, eq(staffProfiles.userId, memberships.userId)).where(and(eq(memberships.schoolId, sid), inArray(memberships.role, ["principal", "vice_principal", "teacher", "bursar"]))),
+          db.select({ userId: users.id, name: users.name, email: users.email, staffNo: staffProfiles.staffNo, role: memberships.role, canApprove: memberships.canApprovePayments, isTeacher: staffProfiles.isTeacher, isClassTeacher: staffProfiles.isClassTeacher, assignedClass: staffProfiles.assignedClass, subjects: staffProfiles.subjects, status: staffProfiles.status, permissions: staffProfiles.permissions }).from(memberships).innerJoin(users, eq(users.id, memberships.userId)).leftJoin(staffProfiles, eq(staffProfiles.userId, memberships.userId)).where(and(eq(memberships.schoolId, sid), inArray(memberships.role, ["principal", "vice_principal", "teacher", "secretary"]))),
           db.select({ action: auditLogs.action, entityType: auditLogs.entityType, entityId: auditLogs.entityId, createdAt: auditLogs.createdAt, actorName: users.name, actorRole: memberships.role, metadata: auditLogs.metadata }).from(auditLogs).leftJoin(users, eq(users.id, auditLogs.actorUserId)).leftJoin(memberships, and(eq(memberships.userId, auditLogs.actorUserId), eq(memberships.schoolId, sid))).where(eq(auditLogs.schoolId, sid)).orderBy(desc(auditLogs.createdAt)).limit(80),
           adminOverview(sid),
         ])
@@ -59,9 +59,10 @@ export default async function DashboardPage() {
         userName={name}
         school={{ name: school?.name ?? schoolName, schoolCode, email: school?.email ?? null, phone: school?.phone ?? null, state: school?.state ?? null, country: school?.country ?? null, address: school?.address ?? null, logoKey: school?.logoKey ?? null, requireApproval: !!school?.requireApproval, currentSession: school?.currentSession ?? "2023/2024", currentTerm: school?.currentTerm ?? "Term 2", dayStartsAt: school?.dayStartsAt ?? null, dayEndsAt: school?.dayEndsAt ?? null }}
         students={studentRows.map((s) => ({ id: s.id, name: `${s.firstName} ${s.lastName}`.trim(), admissionNo: s.admissionNo, createdAt: new Date(s.createdAt).toLocaleDateString(), className: s.className }))}
-        staff={staffRows.map((s) => ({ userId: s.userId, name: s.name, email: s.email, staffNo: s.staffNo ?? null, role: s.role, teacherType: s.isClassTeacher ? "Class teacher" : s.isTeacher ? "Subject teacher" : (ROLE_LABEL[s.role] ?? "Staff"), subjects: (s.subjects as string[]) ?? [], assignedClass: s.assignedClass ?? null, status: s.status ?? "active", canApprove: !!s.canApprove, permissions: (s.permissions as Record<string, string>) ?? {} }))}
-        audit={auditRows.map((a) => ({ action: a.action, entityType: a.entityType, entityId: a.entityId, actor: a.actorName ?? "system", actorRole: a.actorRole ? (ROLE_LABEL[a.actorRole] ?? (a.actorRole === "school_admin" ? "Admin" : a.actorRole)) : null, ts: new Date(a.createdAt).getTime(), detail: describeAudit(a.action, a.metadata as Record<string, unknown>), meta: a.metadata as Record<string, unknown> }))}
+        staff={staffRows.map((s) => ({ userId: s.userId, name: s.name, email: s.email, staffNo: s.staffNo ?? null, role: s.role, teacherType: s.isClassTeacher ? "Class teacher" : s.isTeacher ? "Subject teacher" : (roleLabel(s.role)), subjects: (s.subjects as string[]) ?? [], assignedClass: s.assignedClass ?? null, status: s.status ?? "active", canApprove: !!s.canApprove, permissions: (s.permissions as Record<string, string>) ?? {} }))}
+        audit={auditRows.map((a) => ({ action: a.action, entityType: a.entityType, entityId: a.entityId, actor: a.actorName ?? "system", actorRole: a.actorRole ? (roleLabel(a.actorRole)) : null, ts: new Date(a.createdAt).getTime(), detail: describeAudit(a.action, a.metadata as Record<string, unknown>), meta: a.metadata as Record<string, unknown> }))}
         overview={overview as Awaited<ReturnType<typeof adminOverview>>}
+        restricted={role !== "admin"}
       />
     );
   }

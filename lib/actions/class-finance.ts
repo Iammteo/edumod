@@ -1,18 +1,15 @@
 "use server";
 
-import { headers } from "next/headers";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { invoices, memberships, payments, students } from "@/db/schema";
+import { getAuthContext } from "@/lib/auth/context";
+import { invoices, payments, students } from "@/db/schema";
 
 async function ctx() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) return null;
-  const [m] = await db.select().from(memberships).where(eq(memberships.userId, session.user.id)).limit(1);
-  if (!m) return null;
-  const canView = ["school_admin", "bursar", "principal", "vice_principal"].includes(m.role);
-  return { userId: session.user.id, schoolId: m.schoolId, canView };
+  const a = await getAuthContext();
+  if (!a) return null;
+  const canView = ["school_admin", "secretary", "principal", "vice_principal"].includes(a.role);
+  return { userId: a.userId, schoolId: a.schoolId, canView };
 }
 
 function levelOf(cn: string) { const c = cn.toLowerCase(); if (c.startsWith("primary")) return "Primary"; if (c.startsWith("jss")) return "JSS"; if (c.startsWith("ss")) return "SSS"; return "Other"; }

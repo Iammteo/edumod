@@ -14,6 +14,7 @@ import { DonutChart, BarChart } from "./charts";
 import { Button } from "./ui";
 import { StudentProfilePage } from "./student-profile";
 import { StudentNavProvider, StudentLink } from "./student-nav";
+import { formatNaira as naira } from "@/lib/format";
 import { getStudentAttendance, getAttendanceAnalytics, type StudentAttendance, type AttendanceAnalytics } from "@/lib/actions/student-attendance";
 import type { StudentOverview, StudentFee, StudentTermResult } from "@/lib/dashboard";
 
@@ -31,7 +32,6 @@ function WelcomeBanner({ title, copy }: { title: string; copy: string }) {
 
 type SchoolProps = { userName: string; schoolName: string; schoolCode: string };
 type Trio = [string, string, string];
-const naira = (n: number) => `₦${n.toLocaleString()}`;
 
 function StatGrid({ stats }: { stats: Trio[] }) {
   return <div className="my-7 grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">{stats.map(([label, value, meta]) => <div key={label} className="rounded-[14px] border border-border-soft bg-white p-[18px] transition hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(16,33,63,.08)]"><small className="font-bold text-ink-soft">{label}</small><strong className="mt-2 block break-words font-display text-[clamp(20px,5vw,28px)] font-semibold leading-none">{value}</strong><span className="mt-2 block text-[10px] font-extrabold text-brand-green">{meta}</span></div>)}</div>;

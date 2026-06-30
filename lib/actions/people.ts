@@ -88,7 +88,7 @@ export async function registerOrganization(input: { schoolName: string; state: s
   return { error: "Could not allocate a unique school code right now. Please try again." };
 }
 
-export type StaffRole = "principal" | "vice_principal" | "teacher" | "bursar";
+export type StaffRole = "principal" | "vice_principal" | "teacher" | "secretary";
 export type InviteStaffInput = {
   name: string; email: string;
   employmentType: string; role: StaffRole; jobRole?: string; startDate?: string; staffId?: string;

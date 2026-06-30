@@ -13,9 +13,11 @@ import { signQrToken, verifyQrToken } from "@/lib/attendance-token";
 import { attendanceUploadQueue } from "@/lib/queues";
 import { logAudit } from "@/lib/audit";
 import { consumeOnce, isLockedOut, recordFailure, clearFailures } from "@/lib/rate-limit";
+import { startOfTodayTz } from "@/lib/tz";
+import { roleLabel } from "@/lib/format";
 
 const QR_GRACE_MS = 10_000; // 10s window to tolerate local cellular latency
-const STAFF_ROLES = ["teacher", "principal", "vice_principal", "bursar", "school_admin"];
+const STAFF_ROLES = ["teacher", "principal", "vice_principal", "secretary", "school_admin"];
 const ACCESS_DISABLED = "Your staff access is inactive. Please contact your school admin.";
 // Only leadership can run the attendance terminal (it lives on a dedicated admin device). Teachers
 // clock in *at* it (PIN/QR) but can't open it themselves.
@@ -33,16 +35,6 @@ async function ctx() {
     .where(eq(memberships.userId, s.user.id)).limit(1);
   if (!m) return null;
   return { userId: s.user.id, schoolId: m.schoolId, role: m.role, status: m.status, tz: m.tz || "Africa/Lagos" };
-}
-
-// Midnight "today" in the school's timezone, as a UTC instant — so a late-night clock-in is counted
-// on the correct local day even when the server runs in UTC.
-function startOfTodayTz(tz: string): Date {
-  const now = new Date();
-  const ymd = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
-  const asUTC = new Date(`${ymd}T00:00:00Z`);
-  const offsetMs = new Date(now.toLocaleString("en-US", { timeZone: tz })).getTime() - new Date(now.toLocaleString("en-US", { timeZone: "UTC" })).getTime();
-  return new Date(asUTC.getTime() - offsetMs);
 }
 
 const r2Configured = () => !!process.env.R2_ACCOUNT_ID && !!process.env.R2_ACCESS_KEY_ID && !!process.env.R2_BUCKET;
@@ -127,7 +119,6 @@ export async function selfClockIn(): Promise<{ ok: true; direction: "clock_in" |
 }
 
 // ---- Printable teacher clock-in register (by day or week) ------------------------------------
-const ROLE_LABEL: Record<string, string> = { school_admin: "Admin", principal: "Principal", vice_principal: "Vice principal", teacher: "Teacher", bursar: "Bursar" };
 const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 function daysInRange(from: string, to: string): string[] {
   const out: string[] = []; let d = new Date(from + "T00:00"); const end = new Date(to + "T00:00");
@@ -165,7 +156,7 @@ export async function getTeacherAttendanceReport(from: string, to: string): Prom
       if (endMin !== null && outs.length) { const outMin = minutesOf(new Date(outs[outs.length - 1].ts)); if (outMin < endMin) status += " · left early"; }
     }
     rows.push({
-      date: day, name: s.name, role: ROLE_LABEL[s.role] ?? s.role,
+      date: day, name: s.name, role: roleLabel(s.role),
       timeIn: ins[0] ? fmt(new Date(ins[0].ts)) : "-", timeOut: outs.length ? fmt(new Date(outs[outs.length - 1].ts)) : "-",
       method: ins[0] ? ({ qr_scan: "QR", kiosk_pin: "PIN", self_portal: "Portal", admin_override: "Override" }[ins[0].method] ?? ins[0].method) : "-",
       status,

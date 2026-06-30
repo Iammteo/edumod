@@ -1,19 +1,16 @@
 "use server";
 
-import { headers } from "next/headers";
 import { and, eq, sql } from "drizzle-orm";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { classes, memberships, students } from "@/db/schema";
+import { getAuthContext } from "@/lib/auth/context";
+import { classes, students, staffProfiles, studentAttendance, feeStructures } from "@/db/schema";
 import { SCHOOL_CLASSES } from "@/lib/classes";
 import { logAudit } from "@/lib/audit";
 
 async function ctx() {
-  const s = await auth.api.getSession({ headers: await headers() });
-  if (!s) return null;
-  const [m] = await db.select().from(memberships).where(eq(memberships.userId, s.user.id)).limit(1);
-  if (!m) return null;
-  return { userId: s.user.id, schoolId: m.schoolId, role: m.role, isAdmin: ["school_admin", "principal", "vice_principal"].includes(m.role) };
+  const a = await getAuthContext();
+  if (!a) return null;
+  return { userId: a.userId, schoolId: a.schoolId, role: a.role, isAdmin: ["school_admin", "principal", "vice_principal", "secretary"].includes(a.role) };
 }
 
 function inferLevel(name: string): string | null {
@@ -98,7 +95,14 @@ export async function renameClass(oldName: string, newName: string): Promise<{ o
       const [dup] = await tx.select({ id: classes.id }).from(classes).where(and(eq(classes.schoolId, c.schoolId), eq(classes.name, to))).limit(1);
       if (dup) return { error: "A class with that name already exists." };
       await tx.update(classes).set({ name: to, level: inferLevel(to), updatedAt: new Date() }).where(and(eq(classes.schoolId, c.schoolId), eq(classes.name, from)));
+      // Cascade the rename to every place a class name is stored as free text, so a rename can't
+      // silently orphan rosters, teacher assignments, historical attendance or class-targeted fees.
       await tx.update(students).set({ className: to, updatedAt: new Date() }).where(and(eq(students.schoolId, c.schoolId), eq(students.className, from)));
+      await tx.update(staffProfiles).set({ assignedClass: to, updatedAt: new Date() }).where(and(eq(staffProfiles.schoolId, c.schoolId), eq(staffProfiles.assignedClass, from)));
+      await tx.update(studentAttendance).set({ className: to }).where(and(eq(studentAttendance.schoolId, c.schoolId), eq(studentAttendance.className, from)));
+      // jsonb string-array columns: swap the matching element in place.
+      await tx.execute(sql`update staff_profiles set teaching_classes = (select coalesce(jsonb_agg(case when e = ${from} then ${to} else e end), '[]'::jsonb) from jsonb_array_elements_text(teaching_classes) e) where school_id = ${c.schoolId} and teaching_classes ? ${from}`);
+      await tx.execute(sql`update fee_structures set classes = (select coalesce(jsonb_agg(case when e = ${from} then ${to} else e end), '[]'::jsonb) from jsonb_array_elements_text(classes) e) where school_id = ${c.schoolId} and classes ? ${from}`);
       return { ok: true };
     });
     if ("error" in res) return res;
