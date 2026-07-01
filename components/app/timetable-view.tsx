@@ -13,6 +13,7 @@ const DAY_SHORT = ["MON", "TUE", "WED", "THU", "FRI"];
 // unless `canEdit`, in which case the title and subject cells are inline-editable and periods managed.
 export function TimetableGrid({ className, canEdit = false }: { className: string; canEdit?: boolean }) {
   const [tt, setTt] = useState<Timetable | null>(null);
+  const [editing, setEditing] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -42,14 +43,22 @@ export function TimetableGrid({ className, canEdit = false }: { className: strin
   const lessons = tt.periods.filter((p) => !p.isBreak); // already sorted by start time
   const breaks = tt.periods.filter((p) => p.isBreak);
   const empty = tt.periods.length === 0;
+  const edit = canEdit && editing; // editing chrome stays hidden until the user opts in
 
   return (
     <div className="grid gap-3">
+      {/* Top bar: the clean grid shows by default; one button toggles editing. */}
+      {canEdit && (
+        <div className="flex justify-end">
+          <Button size="sm" variant={editing ? "primary" : "secondary"} onClick={() => setEditing((v) => !v)}>{editing ? "✓ Done" : "✎ Edit timetable"}</Button>
+        </div>
+      )}
+
       {err && <p className="rounded-lg bg-danger-soft px-3 py-2 text-[12px] font-bold text-danger">{err}</p>}
 
-      <TimetableTitle className={className} title={tt.title} canEdit={canEdit} onSaved={(t) => setTt((prev) => prev && { ...prev, title: t })} onErr={setErr} />
+      <TimetableTitle className={className} title={tt.title} canEdit={edit} onSaved={(t) => setTt((prev) => prev && { ...prev, title: t })} onErr={setErr} />
 
-      {empty && !canEdit && <p className="rounded-2xl border border-dashed border-border-soft bg-paper/40 p-6 text-center text-[13px] text-ink-soft">No timetable has been set up for {className} yet.</p>}
+      {empty && !edit && <p className="rounded-2xl border border-dashed border-border-soft bg-paper/40 p-6 text-center text-[13px] text-ink-soft">No timetable has been set up for {className} yet.{canEdit && " Click “Edit timetable” to build it."}</p>}
 
       {/* Break / assembly bands, summarised on one line like a printed timetable. */}
       {breaks.length > 0 && (
@@ -58,7 +67,7 @@ export function TimetableGrid({ className, canEdit = false }: { className: strin
             <span key={b.id} className="inline-flex items-center gap-2">
               {i > 0 && <span aria-hidden className="text-ink-soft/40">|</span>}
               <span>{b.label || "Break"}: {b.startTime}–{b.endTime}</span>
-              {canEdit && <PeriodControls period={b} onChange={load} onErr={setErr} />}
+              {edit && <PeriodControls period={b} onChange={load} onErr={setErr} />}
             </span>
           ))}
         </div>
@@ -74,7 +83,7 @@ export function TimetableGrid({ className, canEdit = false }: { className: strin
                   <th key={p.id} className="min-w-[104px] border-b border-l border-border-soft px-2 py-2 align-top">
                     <span className="block whitespace-nowrap text-[11.5px] font-extrabold text-ink">{p.startTime}–{p.endTime}</span>
                     {p.label && <span className="block text-[10px] font-bold text-ink-soft">{p.label}</span>}
-                    {canEdit && <PeriodControls period={p} onChange={load} onErr={setErr} />}
+                    {edit && <PeriodControls period={p} onChange={load} onErr={setErr} />}
                   </th>
                 ))}
               </tr>
@@ -87,7 +96,7 @@ export function TimetableGrid({ className, canEdit = false }: { className: strin
                     const s = p.slots[day];
                     return (
                       <td key={p.id} className="border-l border-t border-border-soft px-1.5 py-1.5 align-middle">
-                        {canEdit ? (
+                        {edit ? (
                           <input list="tt-subjects" value={s?.subject ?? ""} onChange={(e) => editCell(p.id, day, e.target.value)} onBlur={() => saveCell(p, day)} placeholder="—" className="w-full rounded-md border border-transparent bg-transparent px-1 py-1.5 text-center text-[12px] font-bold text-ink outline-none hover:border-border-soft focus:border-brand-blue focus:bg-white" />
                         ) : s?.subject ? (
                           <span className="font-bold leading-tight text-ink">{s.subject}</span>
@@ -102,7 +111,7 @@ export function TimetableGrid({ className, canEdit = false }: { className: strin
         </div>
       )}
 
-      {canEdit && <>
+      {edit && <>
         <AddPeriodForm className={className} empty={empty} onAdded={load} onErr={setErr} />
         <datalist id="tt-subjects">{SUBJECTS.map((s) => <option key={s} value={s} />)}</datalist>
       </>}
