@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { DashboardChrome } from "./chrome";
+import { TermSwitcher } from "./term-switcher";
 import { AddStudentForm, ResetStudentPasswordForm } from "./people-forms";
 import { StaffPhotoCard } from "./staff-photo";
 import { SchoolScene } from "./illustration";
@@ -129,6 +131,7 @@ function StaffOverview({ assignedClass, isClassTeacher, classSize, subjects }: {
 }
 
 export function StaffDashboard({ userName, schoolName, schoolCode, term, currentSession, currentTerm, image, subjects, assignedClass, isClassTeacher, canAddStudents, isApprover, classStudents }: StaffProps) {
+  const router = useRouter();
   const [active, setActive] = useState("Overview");
   const [addOpen, setAddOpen] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
@@ -144,7 +147,7 @@ export function StaffDashboard({ userName, schoolName, schoolCode, term, current
       {profileId ? <StudentProfilePage studentId={profileId} onBack={() => setProfileId(null)} /> : <>
       {active === "Overview" && (
         <>
-          <GreetingBanner userName={userName} subtitle={`${currentTerm} · ${currentSession} session · here’s what’s happening today.`} />
+          <GreetingBanner userName={userName} subtitle={`${currentTerm} · ${currentSession} session · here’s what’s happening today.`} control={isApprover ? <TermSwitcher onChange={() => router.refresh()} /> : undefined} />
           <div className="mb-[18px] xl:hidden"><CalendarCard canManage /></div>
           <div className="grid gap-[18px] xl:grid-cols-[1fr_320px]">
             <StaffOverview assignedClass={assignedClass} isClassTeacher={isClassTeacher} classSize={classStudents.length} subjects={subjects} />
