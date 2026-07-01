@@ -211,6 +211,50 @@ export async function saveStudentResult(input: { studentId: string; term: string
   }
 }
 
+// Existing CA/exam for a set of students for one term+subject, so the class grid can prefill.
+export async function getClassResults(input: { studentIds: string[]; term: string; subject: string }): Promise<Record<string, { ca: number; exam: number }>> {
+  const c = await ctx();
+  if (!c?.canManage) return {};
+  const ids = (input.studentIds ?? []).filter(Boolean);
+  const term = input.term.trim(), subject = input.subject.trim();
+  if (ids.length === 0 || !term || !subject) return {};
+  const rows = await db.select({ studentId: studentResults.studentId, ca: studentResults.ca, exam: studentResults.exam })
+    .from(studentResults).where(and(eq(studentResults.schoolId, c.schoolId), eq(studentResults.term, term), eq(studentResults.subject, subject), inArray(studentResults.studentId, ids)));
+  const map: Record<string, { ca: number; exam: number }> = {};
+  for (const r of rows) map[r.studentId] = { ca: r.ca, exam: r.exam };
+  return map;
+}
+
+// Save a whole class's CA/exam for one term+subject in one transaction (bulk upsert).
+export async function saveClassResults(input: { term: string; subject: string; entries: { studentId: string; ca: number; exam: number }[] }): Promise<{ ok: true; count: number } | { error: string }> {
+  const c = await ctx();
+  if (!c?.canManage) return { error: "You don't have permission to record results." };
+  const term = input.term.trim(), subject = input.subject.trim();
+  if (!term || !subject) return { error: "Term and subject are required." };
+  const entries = (input.entries ?? []).filter((e) => e.studentId);
+  if (entries.length === 0) return { error: "Enter at least one score." };
+  for (const e of entries) {
+    const ca = Math.round(Number(e.ca) || 0), exam = Math.round(Number(e.exam) || 0);
+    if (ca < 0 || ca > 40) return { error: "CA must be between 0 and 40." };
+    if (exam < 0 || exam > 60) return { error: "Exam must be between 0 and 60." };
+  }
+  const valid = await db.select({ id: students.id }).from(students).where(and(eq(students.schoolId, c.schoolId), inArray(students.id, entries.map((e) => e.studentId))));
+  const validSet = new Set(valid.map((v) => v.id));
+  const rows = entries.filter((e) => validSet.has(e.studentId)).map((e) => ({ schoolId: c.schoolId, studentId: e.studentId, term, subject, ca: Math.round(Number(e.ca) || 0), exam: Math.round(Number(e.exam) || 0) }));
+  if (rows.length === 0) return { error: "No matching students." };
+  try {
+    await db.transaction(async (tx) => {
+      for (const r of rows) {
+        await tx.insert(studentResults).values(r).onConflictDoUpdate({ target: [studentResults.studentId, studentResults.term, studentResults.subject], set: { ca: r.ca, exam: r.exam, updatedAt: new Date() } });
+      }
+    });
+    await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: "result.recorded", entityType: "Result", metadata: { term, subject, count: rows.length } });
+    return { ok: true, count: rows.length };
+  } catch {
+    return { error: "Could not save the results. Please try again." };
+  }
+}
+
 export async function deleteStudentResult(input: { studentId: string; term: string; subject: string }): Promise<{ ok: true } | { error: string }> {
   const c = await ctx();
   if (!c?.canManage) return { error: "You don't have permission." };
