@@ -3,11 +3,11 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { getAuthContext } from "@/lib/auth/context";
-import { timetablePeriods, timetableSlots, timetableMeta } from "@/db/schema";
+import { timetablePeriods, timetableSlots, timetableMeta, memberships, users } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
 import { TIMETABLE_DAYS } from "@/lib/timetable-days";
 
-export type TimetableSlot = { subject: string | null };
+export type TimetableSlot = { subject: string | null; teacher?: string | null; room?: string | null };
 export type TimetablePeriod = {
   id: string; startTime: string; endTime: string; label: string | null; isBreak: boolean;
   slots: (TimetableSlot | null)[]; // one per day, index-aligned with TIMETABLE_DAYS
@@ -45,7 +45,7 @@ export async function getTimetable(className: string): Promise<Timetable> {
       const mine = byPeriod.get(p.id) ?? [];
       const slotsByDay: (TimetableSlot | null)[] = TIMETABLE_DAYS.map((_, day) => {
         const s = mine.find((x) => x.day === day);
-        return s ? { subject: s.subject } : null;
+        return s ? { subject: s.subject, teacher: s.teacher, room: s.room } : null;
       });
       return { id: p.id, startTime: p.startTime, endTime: p.endTime, label: p.label, isBreak: p.isBreak, slots: slotsByDay };
     });
@@ -120,23 +120,35 @@ export async function deletePeriod(id: string): Promise<{ ok: true } | { error: 
   }
 }
 
-// Upsert one cell's subject. Clearing it removes the row so the grid stays sparse.
-export async function setSlot(input: { periodId: string; day: number; subject?: string }): Promise<{ ok: true } | { error: string }> {
+// Teacher / leadership names for the builder's teacher datalist.
+export async function listTeacherNames(): Promise<string[]> {
+  const c = await ctx();
+  if (!c) return [];
+  const rows = await db.select({ name: users.name }).from(memberships)
+    .innerJoin(users, eq(users.id, memberships.userId))
+    .where(and(eq(memberships.schoolId, c.schoolId), inArray(memberships.role, ["teacher", "principal", "vice_principal"])));
+  return [...new Set(rows.map((r) => r.name).filter(Boolean))].sort();
+}
+
+// Upsert one cell (subject/teacher/room). Clearing all three removes the row so the grid stays sparse.
+export async function setSlot(input: { periodId: string; day: number; subject?: string; teacher?: string; room?: string }): Promise<{ ok: true } | { error: string }> {
   const c = await ctx();
   if (!c?.canManage) return { error: "You don't have permission to edit the timetable." };
   if (!Number.isInteger(input.day) || input.day < 0 || input.day >= TIMETABLE_DAYS.length) return { error: "Invalid day." };
   const subject = input.subject?.trim().slice(0, 120) || null;
+  const teacher = input.teacher?.trim().slice(0, 120) || null;
+  const room = input.room?.trim().slice(0, 60) || null;
   try {
     // Confirm the period belongs to this school before touching its slots.
     const [p] = await db.select({ id: timetablePeriods.id }).from(timetablePeriods)
       .where(and(eq(timetablePeriods.id, input.periodId), eq(timetablePeriods.schoolId, c.schoolId))).limit(1);
     if (!p) return { error: "That period no longer exists." };
-    if (!subject) {
+    if (!subject && !teacher && !room) {
       await db.delete(timetableSlots).where(and(eq(timetableSlots.periodId, input.periodId), eq(timetableSlots.day, input.day)));
       return { ok: true };
     }
-    await db.insert(timetableSlots).values({ schoolId: c.schoolId, periodId: input.periodId, day: input.day, subject })
-      .onConflictDoUpdate({ target: [timetableSlots.periodId, timetableSlots.day], set: { subject, updatedAt: new Date() } });
+    await db.insert(timetableSlots).values({ schoolId: c.schoolId, periodId: input.periodId, day: input.day, subject, teacher, room })
+      .onConflictDoUpdate({ target: [timetableSlots.periodId, timetableSlots.day], set: { subject, teacher, room, updatedAt: new Date() } });
     return { ok: true };
   } catch {
     return { error: "Could not save that. Please try again." };
@@ -168,7 +180,7 @@ export async function copyTimetableTo(input: { fromClass: string; toClasses: str
             .values({ schoolId: c.schoolId, className: target, idx: p.idx, startTime: p.startTime, endTime: p.endTime, label: p.label, isBreak: p.isBreak })
             .returning({ id: timetablePeriods.id });
           const slots = slotsByPeriod.get(p.id) ?? [];
-          if (slots.length) await tx.insert(timetableSlots).values(slots.map((s) => ({ schoolId: c.schoolId, periodId: np.id, day: s.day, subject: s.subject })));
+          if (slots.length) await tx.insert(timetableSlots).values(slots.map((s) => ({ schoolId: c.schoolId, periodId: np.id, day: s.day, subject: s.subject, teacher: s.teacher, room: s.room })));
         }
       }
     });

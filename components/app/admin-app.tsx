@@ -28,8 +28,7 @@ import { StaffClockInView } from "./attendance-view";
 import { StudentAttendanceView } from "./student-attendance-view";
 import { updateSchoolProfile, uploadSchoolLogo, removeSchoolLogo } from "@/lib/actions/school";
 import { TermSwitcher } from "./term-switcher";
-import { TimetableGrid } from "./timetable-view";
-import { useClassNames } from "./use-classes";
+import { TimetableBuilder } from "./timetable-builder";
 import { setStaffStatus, removeStaff } from "@/lib/actions/people";
 import { AREAS, AREA_LABELS, LEVELS, type Level } from "@/lib/permissions";
 import type { AdminOverview } from "@/lib/dashboard";
@@ -174,7 +173,7 @@ export function AdminApp({ userName, school, students, staff, audit, overview, i
           {active === "audit" && <AuditLog audit={audit} />}
           {active === "finance" && <FinanceArea section={financeSection} onPick={setFinanceSection} />}
           {active === "attendance" && <StudentAttendanceView />}
-          {active === "timetable" && <TimetableAdmin />}
+          {active === "timetable" && <TimetableBuilder />}
           {["exams", "communications", "reports"].includes(active) && <ComingSoon name={NAV.find((n) => n[0] === active)![1]} />}
           </StudentNavProvider>
         </main>
@@ -684,24 +683,6 @@ function AuditRow({ a }: { a: Audit }) {
 }
 
 /* ---------- Coming soon placeholder ---------- */
-function TimetableAdmin() {
-  const classes = useClassNames();
-  const [cls, setCls] = useState("");
-  useEffect(() => { if (!cls && classes.length) setCls(classes[0]); }, [cls, classes]);
-  return (
-    <div className="grid gap-[18px]">
-      <Head title="Timetable" subtitle="Build each class's weekly schedule - add periods, then fill in the subject and teacher for every day." action={
-        <label className="inline-flex items-center gap-2 text-[12px] font-extrabold text-ink-soft">Class
-          <select value={cls} onChange={(e) => setCls(e.target.value)} className="rounded-[9px] border border-border-soft bg-white px-3 py-1.5 text-[12px] font-bold text-ink outline-none focus:border-brand-blue">
-            {classes.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </label>
-      } />
-      <Card><TimetableGrid className={cls} canEdit /></Card>
-    </div>
-  );
-}
-
 function ComingSoon({ name }: { name: string }) {
   return <><Head title={name} subtitle={`The ${name} module is coming soon.`} /><div className="grid place-items-center rounded-2xl border border-dashed border-border-soft bg-white py-20 text-center"><div className="mb-3 grid size-12 place-items-center rounded-xl bg-brand-soft text-brand-blue">{I(ICONS[name.toLowerCase()] ?? ICONS.reports)}</div><h2 className="font-display text-[18px] font-semibold">{name} is on the way</h2><p className="mt-1 max-w-sm text-[13px] text-ink-soft">We&rsquo;re building this module. You&rsquo;ll manage {name.toLowerCase()} right here soon.</p></div></>;
 }
