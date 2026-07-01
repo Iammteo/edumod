@@ -7,6 +7,7 @@ import { SUBJECTS } from "@/lib/subjects";
 import { useClassNames } from "./use-classes";
 import { useAcademicTerms } from "./use-terms";
 import { exportTimetable } from "@/lib/export-report";
+import { ExamTimetableTab } from "./exam-timetable";
 import { Button } from "./ui";
 
 const DAY_LONG = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -66,6 +67,7 @@ export function TimetableBuilder() {
         : tab === "overview" ? <OverviewTab onGoto={setTab} />
         : tab === "teacher" ? <TeacherTab />
         : tab === "rooms" ? <RoomsTab />
+        : tab === "exam" ? <ExamTimetableTab />
         : <ComingSoonTab tab={TABS.find((t) => t.key === tab)!} />}
     </div>
   );
@@ -104,6 +106,7 @@ function ClassTimetableTab() {
   const [tt, setTt] = useState<Timetable | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [selected, setSelected] = useState<{ periodId: string; day: number } | null>(null); // last-focused cell, for quick-fill chips
 
   const levels = useMemo(() => ["All", ...[...new Set(classes.map(levelOf))]], [classes]);
   const shown = useMemo(() => (level === "All" ? classes : classes.filter((c) => levelOf(c) === level)), [classes, level]);
@@ -128,15 +131,26 @@ function ClassTimetableTab() {
     if ("error" in r) { setErr(r.error); load(); return; }
     setSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
   }
+  // Set a cell's subject to an explicit value (used by the quick-fill chips) and save it directly,
+  // keeping the cell's existing teacher/room.
+  async function fillSubject(periodId: string, day: number, subject: string) {
+    patchCell(periodId, day, "subject", subject);
+    const cur = ttRef.current?.periods.find((p) => p.id === periodId)?.slots[day];
+    setErr(null);
+    const r = await setSlot({ periodId, day, subject, teacher: cur?.teacher ?? "", room: cur?.room ?? "" });
+    if ("error" in r) { setErr(r.error); load(); return; }
+    setSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+  }
 
   // The three inputs for one cell, shared by the week grid and the single-day column. `big` gives the
   // day view a roomier, easier-to-fill layout.
   function cellFields(p: TimetablePeriod, day: number, big = false) {
     const s = p.slots[day];
     const tone = s?.subject ? toneOf(s.subject) : null;
+    const isSel = selected?.periodId === p.id && selected.day === day;
     return (
-      <div className={`rounded-lg border px-2 py-1.5 transition hover:shadow-[0_0_0_2px_rgba(63,111,224,.25)] ${big ? "min-h-0" : "min-h-[58px]"}`} style={tone ? { backgroundColor: tone.bg, borderColor: `${tone.bar}44`, borderLeft: `3px solid ${tone.bar}` } : { borderColor: "#e2e9f4", borderStyle: "dashed" }}>
-        <input list="tt-subjects" value={s?.subject ?? ""} onChange={(e) => patchCell(p.id, day, "subject", e.target.value)} onBlur={() => saveCell(p.id, day)} placeholder="+ Subject" className={`w-full rounded bg-transparent px-0.5 font-bold outline-none placeholder:font-semibold placeholder:text-ink-soft/50 focus:bg-white/70 ${big ? "text-[13.5px]" : "text-[12px]"}`} style={tone ? { color: tone.text } : undefined} />
+      <div className={`rounded-lg border px-2 py-1.5 transition hover:shadow-[0_0_0_2px_rgba(63,111,224,.25)] ${isSel ? "shadow-[0_0_0_2px_rgba(63,111,224,.7)]" : ""} ${big ? "min-h-0" : "min-h-[58px]"}`} style={tone ? { backgroundColor: tone.bg, borderColor: `${tone.bar}44`, borderLeft: `3px solid ${tone.bar}` } : { borderColor: "#e2e9f4", borderStyle: "dashed" }}>
+        <input list="tt-subjects" value={s?.subject ?? ""} onFocus={() => setSelected({ periodId: p.id, day })} onChange={(e) => patchCell(p.id, day, "subject", e.target.value)} onBlur={() => saveCell(p.id, day)} placeholder="+ Subject" className={`w-full rounded bg-transparent px-0.5 font-bold outline-none placeholder:font-semibold placeholder:text-ink-soft/50 focus:bg-white/70 ${big ? "text-[13.5px]" : "text-[12px]"}`} style={tone ? { color: tone.text } : undefined} />
         <div className={big ? "mt-1 grid grid-cols-2 gap-2" : ""}>
           <input list="tt-teachers" value={s?.teacher ?? ""} onChange={(e) => patchCell(p.id, day, "teacher", e.target.value)} onBlur={() => saveCell(p.id, day)} placeholder="Teacher" className="w-full rounded bg-transparent px-0.5 text-[10.5px] text-ink-soft outline-none placeholder:text-ink-soft/40 focus:bg-white/70" />
           <input value={s?.room ?? ""} onChange={(e) => patchCell(p.id, day, "room", e.target.value)} onBlur={() => saveCell(p.id, day)} placeholder="Room" className="w-full rounded bg-transparent px-0.5 text-[10.5px] text-ink-soft outline-none placeholder:text-ink-soft/40 focus:bg-white/70" />
@@ -264,11 +278,17 @@ function ClassTimetableTab() {
 
       {/* Right rail */}
       <div className="grid content-start gap-3.5">
-        <RailCard title="Available periods" subtitle="Common subjects — click a cell, then a chip to fill it fast">
+        <RailCard title="Available periods" subtitle="Click a cell in the grid, then tap a subject to drop it in.">
           <div className="flex flex-wrap gap-1.5">
-            {SUBJECTS.slice(0, 10).map((s) => { const t = toneOf(s); return <span key={s} className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ backgroundColor: t.bg, color: t.text }}>{s}</span>; })}
+            {SUBJECTS.slice(0, 12).map((s) => { const t = toneOf(s); return (
+              <button key={s} type="button" disabled={!selected}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { if (selected) fillSubject(selected.periodId, selected.day, s); }}
+                className="rounded-full px-2.5 py-1 text-[11px] font-bold transition hover:brightness-95 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ backgroundColor: t.bg, color: t.text }}>{s}</button>
+            ); })}
           </div>
-          <p className="mt-2 text-[11px] text-ink-soft">Type any subject into a cell — these are just quick references. Drag-and-drop is coming next.</p>
+          <p className="mt-2 text-[11px] font-bold text-ink-soft">{selected ? "Cell selected — tap a subject to fill it." : "Tip: click a subject cell first, then pick from these."}</p>
         </RailCard>
 
         <RailCard title="Conflict alerts" badge={conflicts.length}>
