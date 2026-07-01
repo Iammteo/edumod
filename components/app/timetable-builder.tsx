@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { getTimetable, listTeacherNames, setTimetableTitle, addPeriod, updatePeriod, deletePeriod, setSlot, copyTimetableTo, type Timetable, type TimetablePeriod } from "@/lib/actions/timetable";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getTimetable, listTeacherNames, setTimetableTitle, addPeriod, updatePeriod, deletePeriod, setSlot, copyTimetableTo, getTimetableAnalytics, getTeacherSchedule, type Timetable, type TimetablePeriod, type SlotEntry, type Clash } from "@/lib/actions/timetable";
 import { TIMETABLE_DAYS } from "@/lib/timetable-days";
 import { SUBJECTS } from "@/lib/subjects";
 import { useClassNames } from "./use-classes";
@@ -61,7 +61,11 @@ export function TimetableBuilder() {
           </button>
         ))}
       </div>
-      {tab === "class" ? <ClassTimetableTab /> : <ComingSoonTab tab={TABS.find((t) => t.key === tab)!} />}
+      {tab === "class" ? <ClassTimetableTab />
+        : tab === "overview" ? <OverviewTab onGoto={setTab} />
+        : tab === "teacher" ? <TeacherTab />
+        : tab === "rooms" ? <RoomsTab />
+        : <ComingSoonTab tab={TABS.find((t) => t.key === tab)!} />}
     </div>
   );
 }
@@ -107,13 +111,18 @@ function ClassTimetableTab() {
   const load = useCallback(() => { if (cls) getTimetable(cls).then(setTt); else setTt({ className: "", title: "", periods: [] }); }, [cls]);
   useEffect(() => { setTt(null); load(); }, [load]);
 
+  // Keep a live ref of the timetable so saveCell always reads the freshest cell values (avoids the
+  // stale-closure bug where fast edits after a save didn't persist).
+  const ttRef = useRef<Timetable | null>(tt);
+  useEffect(() => { ttRef.current = tt; }, [tt]);
+
   function patchCell(periodId: string, day: number, field: "subject" | "teacher" | "room", value: string) {
     setTt((prev) => prev && ({ ...prev, periods: prev.periods.map((p) => p.id !== periodId ? p : ({ ...p, slots: p.slots.map((s, d) => d === day ? { subject: s?.subject ?? null, teacher: s?.teacher ?? null, room: s?.room ?? null, [field]: value || null } : s) })) }));
   }
-  async function saveCell(period: TimetablePeriod, day: number) {
-    const s = period.slots[day];
+  async function saveCell(periodId: string, day: number) {
+    const s = ttRef.current?.periods.find((p) => p.id === periodId)?.slots[day];
     setErr(null);
-    const r = await setSlot({ periodId: period.id, day, subject: s?.subject ?? "", teacher: s?.teacher ?? "", room: s?.room ?? "" });
+    const r = await setSlot({ periodId, day, subject: s?.subject ?? "", teacher: s?.teacher ?? "", room: s?.room ?? "" });
     if ("error" in r) { setErr(r.error); load(); return; }
     setSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
   }
@@ -188,10 +197,10 @@ function ClassTimetableTab() {
                         const tone = s?.subject ? toneOf(s.subject) : null;
                         return (
                           <td key={day} className="p-0 align-top">
-                            <div className="min-h-[58px] rounded-lg border px-2 py-1.5" style={tone ? { backgroundColor: tone.bg, borderColor: `${tone.bar}44`, borderLeft: `3px solid ${tone.bar}` } : { borderColor: "#e2e9f4", borderStyle: "dashed" }}>
-                              <input list="tt-subjects" value={s?.subject ?? ""} onChange={(e) => patchCell(p.id, day, "subject", e.target.value)} onBlur={() => saveCell(p, day)} placeholder="Subject" className="w-full bg-transparent text-[12px] font-bold outline-none placeholder:font-normal placeholder:text-ink-soft/50" style={tone ? { color: tone.text } : undefined} />
-                              <input list="tt-teachers" value={s?.teacher ?? ""} onChange={(e) => patchCell(p.id, day, "teacher", e.target.value)} onBlur={() => saveCell(p, day)} placeholder="Teacher" className="w-full bg-transparent text-[10.5px] text-ink-soft outline-none placeholder:text-ink-soft/40" />
-                              <input value={s?.room ?? ""} onChange={(e) => patchCell(p.id, day, "room", e.target.value)} onBlur={() => saveCell(p, day)} placeholder="Room" className="w-full bg-transparent text-[10.5px] text-ink-soft outline-none placeholder:text-ink-soft/40" />
+                            <div className="min-h-[58px] rounded-lg border px-2 py-1.5 transition hover:shadow-[0_0_0_2px_rgba(63,111,224,.25)]" style={tone ? { backgroundColor: tone.bg, borderColor: `${tone.bar}44`, borderLeft: `3px solid ${tone.bar}` } : { borderColor: "#e2e9f4", borderStyle: "dashed" }}>
+                              <input list="tt-subjects" value={s?.subject ?? ""} onChange={(e) => patchCell(p.id, day, "subject", e.target.value)} onBlur={() => saveCell(p.id, day)} placeholder="+ Subject" className="w-full rounded bg-transparent px-0.5 text-[12px] font-bold outline-none placeholder:font-semibold placeholder:text-ink-soft/50 focus:bg-white/70" style={tone ? { color: tone.text } : undefined} />
+                              <input list="tt-teachers" value={s?.teacher ?? ""} onChange={(e) => patchCell(p.id, day, "teacher", e.target.value)} onBlur={() => saveCell(p.id, day)} placeholder="Teacher" className="w-full rounded bg-transparent px-0.5 text-[10.5px] text-ink-soft outline-none placeholder:text-ink-soft/40 focus:bg-white/70" />
+                              <input value={s?.room ?? ""} onChange={(e) => patchCell(p.id, day, "room", e.target.value)} onBlur={() => saveCell(p.id, day)} placeholder="Room" className="w-full rounded bg-transparent px-0.5 text-[10.5px] text-ink-soft outline-none placeholder:text-ink-soft/40 focus:bg-white/70" />
                             </div>
                           </td>
                         );
@@ -372,6 +381,154 @@ function CopyToClasses({ fromClass, disabled, onErr }: { fromClass: string; disa
         {others.map((c) => { const on = picked.includes(c); return <button key={c} onClick={() => toggle(c)} className={`rounded-full border px-2 py-1 text-[11px] font-bold transition ${on ? "border-brand-blue bg-brand-blue text-white" : "border-border-soft bg-white text-ink-soft hover:border-brand-blue"}`}>{on ? "✓ " : ""}{c}</button>; })}
       </div>
       <div className="mt-2 flex items-center gap-2"><Button size="sm" onClick={apply} disabled={busy || picked.length === 0}>{busy ? "Copying…" : "Copy"}</Button>{done && <span className="text-[11px] font-bold text-brand-green">✓ {done}</span>}</div>
+    </div>
+  );
+}
+
+/* ---------------- Overview tab ---------------- */
+type Analytics = Awaited<ReturnType<typeof getTimetableAnalytics>>;
+function StatTile({ label, value, meta, color }: { label: string; value: string | number; meta: string; color: string }) {
+  return (
+    <div className="rounded-2xl border border-border-soft bg-white p-4">
+      <strong className="block font-display text-[26px] font-bold leading-none" style={{ color }}>{value}</strong>
+      <small className="mt-1.5 block text-[12px] font-bold text-ink">{label}</small>
+      <span className="mt-0.5 block text-[11px] text-ink-soft">{meta}</span>
+    </div>
+  );
+}
+function OverviewTab({ onGoto }: { onGoto: (t: TabKey) => void }) {
+  const [a, setA] = useState<Analytics | null>(null);
+  useEffect(() => { getTimetableAnalytics().then(setA); }, []);
+  if (!a) return <p className="p-6 text-[13px] text-ink-soft">Loading…</p>;
+  const totalClashes = a.clashes.teacher.length + a.clashes.room.length;
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile label="Classes with a timetable" value={a.classesWithTimetable} meta="Built so far" color="#2159e8" />
+        <StatTile label="Lessons scheduled" value={a.lessons} meta="Across all classes" color="#178a4c" />
+        <StatTile label="Teachers timetabled" value={a.teachers.length} meta="Named on lessons" color="#8b5cf6" />
+        <StatTile label="Conflicts" value={totalClashes} meta={totalClashes ? "Need attention" : "All clear ✓"} color={totalClashes ? "#c0392b" : "#178a4c"} />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="rounded-2xl border border-border-soft bg-white p-4">
+          <h3 className="mb-2 font-display text-[15px] font-bold">Get started</h3>
+          <p className="mb-3 text-[13px] text-ink-soft">Build a class&rsquo;s weekly timetable, then copy it to similar classes and review conflicts.</p>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => onGoto("class")}>Open class builder</Button>
+            <Button size="sm" variant="secondary" onClick={() => onGoto("teacher")}>Teacher schedules</Button>
+            <Button size="sm" variant="secondary" onClick={() => onGoto("rooms")}>Rooms &amp; conflicts</Button>
+          </div>
+        </section>
+        <section className="rounded-2xl border border-border-soft bg-white p-4">
+          <h3 className="mb-2 font-display text-[15px] font-bold">Conflict summary</h3>
+          {totalClashes === 0 ? <p className="flex items-center gap-1.5 text-[13px] font-bold text-brand-green">{svg(<path d="M20 6 9 17l-5-5" />)}No teacher or room clashes detected.</p>
+            : <ul className="grid gap-1.5 text-[12.5px]">
+                <li className="font-bold text-ink">{a.clashes.teacher.length} teacher double-booking{a.clashes.teacher.length === 1 ? "" : "s"}</li>
+                <li className="font-bold text-ink">{a.clashes.room.length} room clash{a.clashes.room.length === 1 ? "" : "es"}</li>
+                <li><button onClick={() => onGoto("rooms")} className="text-[12px] font-bold text-brand-blue hover:underline">View & resolve →</button></li>
+              </ul>}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Teacher schedules tab ---------------- */
+function EntryWeekGrid({ entries, showClass }: { entries: SlotEntry[]; showClass?: boolean }) {
+  const rows = useMemo(() => [...new Set(entries.map((e) => `${e.startTime}|${e.endTime}`))].sort().map((k) => { const [startTime, endTime] = k.split("|"); return { startTime, endTime }; }), [entries]);
+  if (entries.length === 0) return <p className="rounded-2xl border border-dashed border-border-soft bg-paper/40 p-6 text-center text-[13px] text-ink-soft">No lessons scheduled.</p>;
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-border-soft bg-white">
+      <table className="w-full min-w-[720px] border-separate border-spacing-1 text-[12px]">
+        <thead><tr><th className="w-[86px] px-2 py-2 text-left text-[11px] font-extrabold uppercase tracking-wide text-ink-soft">Time</th>{DAY_LONG.map((d, i) => <th key={d} className="px-2 py-2 text-center text-[11.5px] font-extrabold text-ink"><span className="hidden sm:inline">{d}</span><span className="sm:hidden">{DAY_SHORT[i]}</span></th>)}</tr></thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={`${row.startTime}-${row.endTime}`}>
+              <td className="px-2 py-1 align-top text-[10.5px] font-bold text-ink-soft"><span className="whitespace-nowrap">{row.startTime}</span><br/><span className="whitespace-nowrap">{row.endTime}</span></td>
+              {DAY_LONG.map((_, day) => {
+                const cell = entries.filter((e) => e.day === day && e.startTime === row.startTime && e.endTime === row.endTime);
+                return <td key={day} className="p-0 align-top">
+                  {cell.length === 0 ? <div className="min-h-[52px] rounded-lg border border-dashed border-border-soft" /> : cell.map((e, i) => { const t = toneOf(e.subject ?? e.className); return (
+                    <div key={i} className="mb-1 min-h-[52px] rounded-lg border px-2 py-1.5" style={{ backgroundColor: t.bg, borderColor: `${t.bar}44`, borderLeft: `3px solid ${t.bar}` }}>
+                      <span className="block text-[12px] font-bold" style={{ color: t.text }}>{e.subject || "—"}</span>
+                      {showClass && <span className="block text-[10.5px] font-semibold text-ink-soft">{e.className}</span>}
+                      {e.room && <span className="block text-[10.5px] text-ink-soft">{e.room}</span>}
+                    </div>
+                  ); })}
+                </td>;
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+function TeacherTab() {
+  const [a, setA] = useState<Analytics | null>(null);
+  const [teacher, setTeacher] = useState("");
+  const [data, setData] = useState<Awaited<ReturnType<typeof getTeacherSchedule>> | null>(null);
+  useEffect(() => { getTimetableAnalytics().then((r) => { setA(r); if (r.teachers.length) setTeacher((t) => t || r.teachers[0]); }); }, []);
+  useEffect(() => { if (teacher) getTeacherSchedule(teacher).then(setData); else setData(null); }, [teacher]);
+  if (!a) return <p className="p-6 text-[13px] text-ink-soft">Loading…</p>;
+  if (a.teachers.length === 0) return <p className="rounded-2xl border border-dashed border-border-soft bg-paper/40 p-8 text-center text-[13px] text-ink-soft">No teachers are named on any timetable yet. Add teachers to lessons in the Class timetable tab and they&rsquo;ll appear here.</p>;
+  return (
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-border-soft bg-white p-3.5">
+        <Field label="Teacher"><Select value={teacher} onChange={setTeacher} options={a.teachers} /></Field>
+        {data && <div className="ml-auto flex flex-wrap gap-2">
+          <MiniStat label="Periods / week" value={data.periods} />
+          <MiniStat label="Classes" value={data.classes} />
+          <MiniStat label="Subjects" value={data.subjects.length} />
+        </div>}
+      </div>
+      {data && data.subjects.length > 0 && <p className="text-[12px] text-ink-soft"><span className="font-bold text-ink">Subjects:</span> {data.subjects.join(", ")}</p>}
+      {data && <EntryWeekGrid entries={data.entries} showClass />}
+    </div>
+  );
+}
+function MiniStat({ label, value }: { label: string; value: number }) {
+  return <div className="rounded-xl border border-border-soft bg-paper/40 px-3 py-1.5 text-center"><strong className="block font-display text-[18px] font-bold text-brand-blue">{value}</strong><span className="text-[10.5px] font-bold text-ink-soft">{label}</span></div>;
+}
+
+/* ---------------- Rooms & conflicts tab ---------------- */
+function ClashCard({ clash, kind }: { clash: Clash; kind: "teacher" | "room" }) {
+  return (
+    <div className="rounded-xl border border-warn-line bg-warn-soft/60 p-3">
+      <div className="mb-1 flex items-center justify-between">
+        <strong className="text-[13px] text-ink">{kind === "teacher" ? "👤 " : "🏫 "}{clash.name}</strong>
+        <span className="rounded-full bg-warn px-2 py-0.5 text-[10px] font-extrabold uppercase text-white">{kind === "teacher" ? "Double-booked" : "Room clash"}</span>
+      </div>
+      <p className="mb-1.5 text-[11.5px] font-semibold text-ink-soft">{DAY_LONG[clash.day]} · {clash.startTime}–{clash.endTime}</p>
+      <div className="flex flex-wrap gap-1.5">{clash.entries.map((e, i) => <span key={i} className="rounded-lg bg-white px-2 py-1 text-[11px] font-bold text-ink">{e.className}{e.subject ? ` · ${e.subject}` : ""}</span>)}</div>
+    </div>
+  );
+}
+function RoomsTab() {
+  const [a, setA] = useState<Analytics | null>(null);
+  useEffect(() => { getTimetableAnalytics().then(setA); }, []);
+  if (!a) return <p className="p-6 text-[13px] text-ink-soft">Loading…</p>;
+  const all = [...a.clashes.teacher.map((c) => ({ c, kind: "teacher" as const })), ...a.clashes.room.map((c) => ({ c, kind: "room" as const }))];
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <StatTile label="Rooms in use" value={a.rooms.length} meta="Named on lessons" color="#2159e8" />
+        <StatTile label="Teacher double-bookings" value={a.clashes.teacher.length} meta={a.clashes.teacher.length ? "Resolve these" : "None ✓"} color={a.clashes.teacher.length ? "#c0392b" : "#178a4c"} />
+        <StatTile label="Room clashes" value={a.clashes.room.length} meta={a.clashes.room.length ? "Resolve these" : "None ✓"} color={a.clashes.room.length ? "#c0392b" : "#178a4c"} />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="rounded-2xl border border-border-soft bg-white p-4">
+          <h3 className="mb-2 font-display text-[15px] font-bold">Conflicts {all.length > 0 && <span className="ml-1 rounded-full bg-warn px-2 py-0.5 text-[11px] font-extrabold text-white">{all.length}</span>}</h3>
+          {all.length === 0 ? <p className="flex items-center gap-1.5 text-[13px] font-bold text-brand-green">{svg(<path d="M20 6 9 17l-5-5" />)}No teacher or room clashes. Nice.</p>
+            : <div className="grid gap-2">{all.map(({ c, kind }, i) => <ClashCard key={i} clash={c} kind={kind} />)}</div>}
+          <p className="mt-2 text-[11px] text-ink-soft">Detected from the class timetables. Fix a clash by changing the room or teacher on one of the clashing lessons in the Class timetable tab.</p>
+        </section>
+        <section className="rounded-2xl border border-border-soft bg-white p-4">
+          <h3 className="mb-2 font-display text-[15px] font-bold">Rooms in use</h3>
+          {a.rooms.length === 0 ? <p className="text-[13px] text-ink-soft">No rooms have been set on any lesson yet. Add a room to cells in the Class timetable tab.</p>
+            : <div className="flex flex-wrap gap-1.5">{a.rooms.map((r) => <span key={r} className="rounded-lg border border-border-soft bg-paper/40 px-2.5 py-1 text-[12px] font-bold text-ink">{r}</span>)}</div>}
+        </section>
+      </div>
     </div>
   );
 }

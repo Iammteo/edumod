@@ -155,6 +155,64 @@ export async function setSlot(input: { periodId: string; day: number; subject?: 
   }
 }
 
+/* ---------------- Analytics (Overview, Teacher schedules, Rooms & conflicts) ---------------- */
+export type SlotEntry = { day: number; className: string; subject: string | null; teacher: string | null; room: string | null; startTime: string; endTime: string };
+export type Clash = { day: number; startTime: string; endTime: string; name: string; entries: { className: string; subject: string | null }[] };
+
+// Every filled lesson slot in the school, joined to its period's time. The building block for the
+// teacher-schedule, room-usage and conflict views (all derived from the class timetables themselves).
+async function allLessonSlots(schoolId: string): Promise<SlotEntry[]> {
+  const rows = await db.select({
+    day: timetableSlots.day, subject: timetableSlots.subject, teacher: timetableSlots.teacher, room: timetableSlots.room,
+    className: timetablePeriods.className, startTime: timetablePeriods.startTime, endTime: timetablePeriods.endTime, isBreak: timetablePeriods.isBreak,
+  }).from(timetableSlots).innerJoin(timetablePeriods, eq(timetablePeriods.id, timetableSlots.periodId))
+    .where(eq(timetableSlots.schoolId, schoolId));
+  return rows.filter((r) => !r.isBreak).map(({ isBreak: _omit, ...r }) => r);
+}
+
+function findClashes(rows: SlotEntry[], key: "teacher" | "room"): Clash[] {
+  const map = new Map<string, Clash>();
+  for (const r of rows) {
+    const v = r[key]; if (!v) continue;
+    const k = `${r.day}|${r.startTime}|${r.endTime}|${v.toLowerCase()}`;
+    let c = map.get(k);
+    if (!c) { c = { day: r.day, startTime: r.startTime, endTime: r.endTime, name: v, entries: [] }; map.set(k, c); }
+    c.entries.push({ className: r.className, subject: r.subject });
+  }
+  return [...map.values()].filter((c) => c.entries.length > 1).sort((a, b) => a.day - b.day || a.startTime.localeCompare(b.startTime));
+}
+
+export async function getTimetableAnalytics(): Promise<{ classesWithTimetable: number; lessons: number; teachers: string[]; rooms: string[]; clashes: { teacher: Clash[]; room: Clash[] } }> {
+  const c = await ctx();
+  if (!c) return { classesWithTimetable: 0, lessons: 0, teachers: [], rooms: [], clashes: { teacher: [], room: [] } };
+  const [rows, periodClasses] = await Promise.all([
+    allLessonSlots(c.schoolId),
+    db.selectDistinct({ className: timetablePeriods.className }).from(timetablePeriods).where(eq(timetablePeriods.schoolId, c.schoolId)),
+  ]);
+  const teachers = [...new Set(rows.map((r) => r.teacher).filter((x): x is string => !!x))].sort();
+  const rooms = [...new Set(rows.map((r) => r.room).filter((x): x is string => !!x))].sort();
+  return {
+    classesWithTimetable: periodClasses.length,
+    lessons: rows.filter((r) => r.subject).length,
+    teachers, rooms,
+    clashes: { teacher: findClashes(rows, "teacher"), room: findClashes(rows, "room") },
+  };
+}
+
+// A single teacher's week across every class, plus workload stats.
+export async function getTeacherSchedule(teacher: string): Promise<{ entries: SlotEntry[]; periods: number; classes: number; subjects: string[] }> {
+  const c = await ctx();
+  const name = cleanName(teacher);
+  if (!c || !name) return { entries: [], periods: 0, classes: 0, subjects: [] };
+  const rows = (await allLessonSlots(c.schoolId)).filter((r) => (r.teacher ?? "").toLowerCase() === name.toLowerCase());
+  return {
+    entries: rows,
+    periods: rows.length,
+    classes: new Set(rows.map((r) => r.className)).size,
+    subjects: [...new Set(rows.map((r) => r.subject).filter((x): x is string => !!x))].sort(),
+  };
+}
+
 // Copy one class's whole timetable (periods, breaks and subjects) onto other classes, REPLACING each
 // target's current timetable. Titles aren't copied - they usually name the class. Leadership only.
 export async function copyTimetableTo(input: { fromClass: string; toClasses: string[] }): Promise<{ ok: true; count: number } | { error: string }> {
