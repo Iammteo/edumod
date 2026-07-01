@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DashboardChrome } from "./chrome";
 import { TermSwitcher } from "./term-switcher";
+import { TimetableGrid } from "./timetable-view";
+import { useClassNames } from "./use-classes";
 import { AddStudentForm, ResetStudentPasswordForm } from "./people-forms";
 import { StaffPhotoCard } from "./staff-photo";
 import { SchoolScene } from "./illustration";
@@ -65,6 +67,7 @@ const STAFF_HEAD: Record<string, [string, string]> = {
   Attendance: ["Attendance", "Clock in at the terminal and mark your class register."],
   "My class": ["My class", "The pupils on your class register."],
   Results: ["Record results", "Enter CA and exam scores for your class."],
+  Timetable: ["Timetable", "Your class's weekly schedule."],
   "My profile": ["My profile", "Your role, class and subjects."],
 };
 
@@ -135,7 +138,7 @@ export function StaffDashboard({ userName, schoolName, schoolCode, term, current
   const [active, setActive] = useState("Overview");
   const [addOpen, setAddOpen] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
-  const nav = ["Overview", "Attendance", "My class", ...(isClassTeacher ? ["Results"] : []), "My profile"];
+  const nav = ["Overview", "Attendance", "My class", ...(isClassTeacher ? ["Results"] : []), "Timetable", "My profile"];
   const [title, subtitle] = STAFF_HEAD[active] ?? ["", ""];
   const headerAction = active === "My class" && canAddStudents
     ? <Button size="sm" onClick={() => setAddOpen((v) => !v)}>{addOpen ? "Close" : "＋ Add student"}</Button>
@@ -185,6 +188,8 @@ export function StaffDashboard({ userName, schoolName, schoolCode, term, current
 
       {active === "Results" && isClassTeacher && <Panel title="Record results"><RecordResults classStudents={classStudents} subjects={subjects} /></Panel>}
 
+      {active === "Timetable" && <StaffTimetable assignedClass={assignedClass} canEdit={isApprover} />}
+
       {active === "My profile" && (
         <Panel title="My profile">
           <StaffPhotoCard name={userName} image={image} />
@@ -194,6 +199,23 @@ export function StaffDashboard({ userName, schoolName, schoolCode, term, current
       </>}
       </StudentNavProvider>
     </DashboardChrome>
+  );
+}
+
+// Staff timetable: teachers view any class (defaulting to their own); principal/VP can also edit.
+function StaffTimetable({ assignedClass, canEdit }: { assignedClass: string | null; canEdit: boolean }) {
+  const classes = useClassNames();
+  const [cls, setCls] = useState(assignedClass ?? "");
+  useEffect(() => { if (!cls && classes.length) setCls(assignedClass && classes.includes(assignedClass) ? assignedClass : classes[0]); }, [cls, classes, assignedClass]);
+  return (
+    <Panel title="Timetable" className="grid gap-3">
+      <label className="inline-flex items-center gap-2 text-[12px] font-extrabold text-ink-soft">Class
+        <select value={cls} onChange={(e) => setCls(e.target.value)} className="rounded-[9px] border border-border-soft bg-white px-3 py-1.5 text-[12px] font-bold text-ink outline-none focus:border-brand-blue">
+          {classes.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </label>
+      <TimetableGrid className={cls} canEdit={canEdit} />
+    </Panel>
   );
 }
 
@@ -209,7 +231,7 @@ export function StudentDashboard({ userName, schoolName, schoolCode, term, overv
   ];
   const results = overview?.results ?? [];
   return (
-    <DashboardChrome roleLabel="Student / Parent" school={schoolName} schoolCode={schoolCode} term={term} userName={userName} title={`Welcome back, ${userName.split(" ")[0]} 👋`} subtitle="Your results, fees and payments at a glance." nav={["Overview", "Results", "Fees"]}>
+    <DashboardChrome roleLabel="Student / Parent" school={schoolName} schoolCode={schoolCode} term={term} userName={userName} title={`Welcome back, ${userName.split(" ")[0]} 👋`} subtitle="Your results, fees and payments at a glance." nav={["Overview", "Results", "Fees", "Timetable"]}>
       <WelcomeBanner title={`Hello, ${userName.split(" ")[0]}!`} copy={`${schoolName} · ${term}. Track your results, fees and payments here in real time.`} />
       <StatGrid stats={stats} />
       <div className="grid gap-[18px] xl:grid-cols-[1.3fr_.7fr]">
@@ -221,6 +243,9 @@ export function StudentDashboard({ userName, schoolName, schoolCode, term, overv
           {!overview ? <Empty text="No student record is linked to this account yet." /> : fees.length === 0 ? <Empty text="No fees have been issued to you yet." /> : <FeeRows items={fees} />}
         </Panel>
       </div>
+      <Panel id="timetable" title={overview?.className ? `Timetable · ${overview.className}` : "Timetable"}>
+        {overview?.className ? <TimetableGrid className={overview.className} /> : <Empty text="You haven't been assigned to a class yet." />}
+      </Panel>
     </DashboardChrome>
   );
 }
