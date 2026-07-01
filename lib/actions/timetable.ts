@@ -5,9 +5,7 @@ import { db } from "@/lib/db";
 import { getAuthContext } from "@/lib/auth/context";
 import { timetablePeriods, timetableSlots, memberships, users, staffProfiles } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
-
-// Mon-Fri. Index 0 = Monday. Saturday timetables are rare here; can extend later.
-export const TIMETABLE_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"] as const;
+import { TIMETABLE_DAYS } from "@/lib/timetable-days";
 
 export type TimetableSlot = { subject: string | null; teacher: string | null; room: string | null };
 export type TimetablePeriod = {

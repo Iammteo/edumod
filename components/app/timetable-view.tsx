@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { getTimetable, listTeacherNames, addPeriod, updatePeriod, deletePeriod, setSlot, TIMETABLE_DAYS, type Timetable, type TimetablePeriod } from "@/lib/actions/timetable";
+import { getTimetable, listTeacherNames, addPeriod, updatePeriod, deletePeriod, setSlot, type Timetable, type TimetablePeriod } from "@/lib/actions/timetable";
+import { TIMETABLE_DAYS } from "@/lib/timetable-days";
 import { SUBJECTS } from "@/lib/subjects";
 import { Button } from "./ui";
 
