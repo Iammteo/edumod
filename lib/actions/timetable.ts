@@ -142,3 +142,39 @@ export async function setSlot(input: { periodId: string; day: number; subject?: 
     return { error: "Could not save that. Please try again." };
   }
 }
+
+// Copy one class's whole timetable (periods, breaks and subjects) onto other classes, REPLACING each
+// target's current timetable. Titles aren't copied - they usually name the class. Leadership only.
+export async function copyTimetableTo(input: { fromClass: string; toClasses: string[] }): Promise<{ ok: true; count: number } | { error: string }> {
+  const c = await ctx();
+  if (!c?.canManage) return { error: "You don't have permission to edit the timetable." };
+  const from = cleanName(input.fromClass);
+  const targets = [...new Set((input.toClasses || []).map(cleanName).filter((n) => n && n !== from))];
+  if (!from) return { error: "Pick a class first." };
+  if (targets.length === 0) return { error: "Pick at least one other class to copy to." };
+
+  const srcPeriods = await db.select().from(timetablePeriods).where(and(eq(timetablePeriods.schoolId, c.schoolId), eq(timetablePeriods.className, from)));
+  if (srcPeriods.length === 0) return { error: "Build this class's timetable before copying it." };
+  const srcSlots = await db.select().from(timetableSlots).where(inArray(timetableSlots.periodId, srcPeriods.map((p) => p.id)));
+  const slotsByPeriod = new Map<string, typeof srcSlots>();
+  for (const s of srcSlots) (slotsByPeriod.get(s.periodId) ?? slotsByPeriod.set(s.periodId, []).get(s.periodId)!).push(s);
+
+  try {
+    await db.transaction(async (tx) => {
+      for (const target of targets) {
+        await tx.delete(timetablePeriods).where(and(eq(timetablePeriods.schoolId, c.schoolId), eq(timetablePeriods.className, target)));
+        for (const p of srcPeriods) {
+          const [np] = await tx.insert(timetablePeriods)
+            .values({ schoolId: c.schoolId, className: target, idx: p.idx, startTime: p.startTime, endTime: p.endTime, label: p.label, isBreak: p.isBreak })
+            .returning({ id: timetablePeriods.id });
+          const slots = slotsByPeriod.get(p.id) ?? [];
+          if (slots.length) await tx.insert(timetableSlots).values(slots.map((s) => ({ schoolId: c.schoolId, periodId: np.id, day: s.day, subject: s.subject })));
+        }
+      }
+    });
+    await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: "timetable.copied", entityType: "Timetable", metadata: { from, to: targets } });
+    return { ok: true, count: targets.length };
+  } catch {
+    return { error: "Could not copy the timetable. Please try again." };
+  }
+}

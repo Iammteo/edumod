@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { getTimetable, setTimetableTitle, addPeriod, updatePeriod, deletePeriod, setSlot, type Timetable, type TimetablePeriod } from "@/lib/actions/timetable";
+import { getTimetable, setTimetableTitle, addPeriod, updatePeriod, deletePeriod, setSlot, copyTimetableTo, type Timetable, type TimetablePeriod } from "@/lib/actions/timetable";
 import { TIMETABLE_DAYS } from "@/lib/timetable-days";
 import { SUBJECTS } from "@/lib/subjects";
+import { useClassNames } from "./use-classes";
 import { Button } from "./ui";
 
 const DAY_SHORT = ["MON", "TUE", "WED", "THU", "FRI"];
@@ -113,8 +114,52 @@ export function TimetableGrid({ className, canEdit = false }: { className: strin
 
       {edit && <>
         <AddPeriodForm className={className} empty={empty} onAdded={load} onErr={setErr} />
+        {!empty && <CopyToClasses fromClass={className} onErr={setErr} />}
         <datalist id="tt-subjects">{SUBJECTS.map((s) => <option key={s} value={s} />)}</datalist>
       </>}
+    </div>
+  );
+}
+
+// Copy this class's timetable onto other classes (replacing theirs). Shown only in edit mode.
+function CopyToClasses({ fromClass, onErr }: { fromClass: string; onErr: (m: string | null) => void }) {
+  const classes = useClassNames();
+  const others = classes.filter((c) => c !== fromClass);
+  const [open, setOpen] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+
+  function toggle(name: string) { setPicked((p) => p.includes(name) ? p.filter((x) => x !== name) : [...p, name]); setDone(null); }
+  async function apply() {
+    if (picked.length === 0) return;
+    if (!confirm(`Copy ${fromClass}'s timetable to ${picked.length} class(es)? This replaces their current timetable.`)) return;
+    setBusy(true); onErr(null); setDone(null);
+    const r = await copyTimetableTo({ fromClass, toClasses: picked });
+    setBusy(false);
+    if ("error" in r) { onErr(r.error); return; }
+    setDone(`Copied to ${r.count} class${r.count === 1 ? "" : "es"}.`); setPicked([]);
+  }
+
+  if (others.length === 0) return null;
+  if (!open) return <div><Button size="sm" variant="secondary" onClick={() => setOpen(true)}>⧉ Copy to other classes</Button></div>;
+  return (
+    <div className="rounded-2xl border border-border-soft bg-paper/40 p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-[11px] font-extrabold uppercase tracking-wide text-ink-soft">Copy {fromClass}&rsquo;s timetable to…</p>
+        <button onClick={() => setOpen(false)} className="text-[12px] font-bold text-ink-soft hover:text-ink">Close</button>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {others.map((c) => {
+          const on = picked.includes(c);
+          return <button key={c} onClick={() => toggle(c)} className={`rounded-full border px-3 py-1.5 text-[12px] font-bold transition ${on ? "border-brand-blue bg-brand-blue text-white" : "border-border-soft bg-white text-ink-soft hover:border-brand-blue hover:text-brand-blue"}`}>{on ? "✓ " : ""}{c}</button>;
+        })}
+      </div>
+      <div className="mt-3 flex items-center gap-3">
+        <Button size="sm" onClick={apply} disabled={busy || picked.length === 0}>{busy ? "Copying…" : `Copy to ${picked.length || ""} ${picked.length === 1 ? "class" : "classes"}`.trim()}</Button>
+        {done && <span className="text-[12px] font-bold text-brand-green">✓ {done}</span>}
+      </div>
+      <p className="mt-2 text-[11px] text-ink-soft">This replaces the selected classes&rsquo; existing timetables. Titles aren&rsquo;t copied.</p>
     </div>
   );
 }
