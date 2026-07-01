@@ -2,7 +2,7 @@
 
 import { randomUUID } from "crypto";
 import { headers } from "next/headers";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { schools, memberships, students, staffProfiles, users, accounts } from "@/db/schema";
@@ -14,7 +14,7 @@ import { logAudit } from "@/lib/audit";
 import { composeUsername, normalizeIdentifier } from "@/lib/identity/student-id";
 import { generateStaffId } from "@/lib/identity/staff-id";
 import { isLockedOut, recordFailure, clearFailures, LOCKOUT_MINUTES } from "@/lib/rate-limit";
-import { getOrCreateDeviceId, evaluateStaffDevice } from "@/lib/device-trust";
+import { getOrCreateDeviceId, evaluateStaffDevice, readDeviceId, deviceStatus } from "@/lib/device-trust";
 import { encryptSecret } from "@/lib/crypto";
 import { sendSchoolCodeEmail, sendEmail } from "@/lib/email";
 
@@ -288,7 +288,7 @@ export async function studentLogin(input: { schoolCode: string; studentId: strin
 
 // Staff sign-in with a Staff ID (the Better Auth username) + password - an alternative to email.
 // Same per-account + per-IP lockout as students; uniform error so it doesn't reveal valid IDs.
-export async function staffLogin(input: { staffId: string; password: string }): Promise<{ ok: true } | { error: string }> {
+export async function staffLogin(input: { staffId: string; password: string }): Promise<{ ok: true } | { error: string } | { pending: true; message: string }> {
   const h = await headers();
   const ip = (h.get("x-forwarded-for")?.split(",")[0] || h.get("x-real-ip") || "unknown").trim();
   const usernameValue = normalizeIdentifier(input.staffId);
@@ -302,7 +302,9 @@ export async function staffLogin(input: { staffId: string; password: string }): 
   // Device trust (staff only; admins can sign in anywhere). New devices need admin approval.
   if (prof?.userId) {
     const dec = await evaluateStaffDevice(prof.userId, await getOrCreateDeviceId());
-    if (!dec.allow) return { error: dec.message ?? "This device needs admin approval before you can sign in." };
+    // A new/pending device isn't a bad-credential attempt, so don't count it toward the lockout —
+    // signal "pending" so the client can show a waiting screen and auto-continue once approved.
+    if (!dec.allow) return { pending: true as const, message: dec.message ?? "This device is waiting for admin approval." };
   }
   try {
     await (auth.api as unknown as { signInUsername(a: { body: { username: string; password: string; rememberMe: boolean }; headers: Headers }): Promise<unknown> })
@@ -313,4 +315,19 @@ export async function staffLogin(input: { staffId: string; password: string }): 
     await recordFailure(keys);
     return { error: "Invalid Staff ID or password." };
   }
+}
+
+// Lightweight poll for the "waiting for approval" screen: has the admin approved THIS browser's device
+// for the person who just tried to log in? Cheap read (no password), so polling it doesn't trip the
+// login lockout or auth rate limits. Returns only a status for the caller's own device cookie.
+export async function deviceApprovalStatus(identifier: string): Promise<{ status: "approved" | "pending" | "revoked" | "none" }> {
+  const id = (identifier || "").trim();
+  if (!id) return { status: "none" };
+  const [u] = await db.select({ id: users.id }).from(users)
+    .where(or(eq(users.username, normalizeIdentifier(id)), eq(users.email, id.toLowerCase()))).limit(1);
+  if (!u) return { status: "none" };
+  const deviceId = await readDeviceId();
+  if (!deviceId) return { status: "none" };
+  const st = await deviceStatus(u.id, deviceId);
+  return { status: st === "new" ? "none" : st };
 }
