@@ -137,7 +137,7 @@ export function StaffDashboard({ userName, schoolName, schoolCode, term, current
     ? <Button size="sm" onClick={() => setAddOpen((v) => !v)}>{addOpen ? "Close" : "＋ Add student"}</Button>
     : undefined;
   return (
-    <DashboardChrome roleLabel="Teacher" school={schoolName} schoolCode={schoolCode} term={term} userName={userName} title={title} subtitle={subtitle} nav={nav} active={active} onSelect={setActive} headerAction={profileId ? undefined : headerAction}>
+    <DashboardChrome roleLabel="Teacher" school={schoolName} schoolCode={schoolCode} term={term} userName={userName} title={title} subtitle={subtitle} nav={nav} active={active} onSelect={(name) => { setActive(name); setProfileId(null); }} headerAction={profileId ? undefined : headerAction}>
       <StudentNavProvider value={{ openStudent: setProfileId }}>
       {profileId ? <StudentProfilePage studentId={profileId} onBack={() => setProfileId(null)} /> : <>
       {active === "Overview" && (
