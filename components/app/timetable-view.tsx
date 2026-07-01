@@ -6,10 +6,11 @@ import { TIMETABLE_DAYS } from "@/lib/timetable-days";
 import { SUBJECTS } from "@/lib/subjects";
 import { Button } from "./ui";
 
-const DAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+const DAY_SHORT = ["MON", "TUE", "WED", "THU", "FRI"];
 
-// One class's weekly timetable. Read-only unless `canEdit`, in which case cells are inline-editable and
-// period rows can be added / retimed / removed. Used by admin (with a class picker), teachers and students.
+// One class's weekly timetable, laid out like a printed school timetable: days down the side, lesson
+// periods across the top, and break/assembly bands summarised in a line above the grid. Read-only
+// unless `canEdit`, in which case subject cells are inline-editable and periods can be managed.
 export function TimetableGrid({ className, canEdit = false }: { className: string; canEdit?: boolean }) {
   const [tt, setTt] = useState<Timetable | null>(null);
   const [teachers, setTeachers] = useState<string[]>([]);
@@ -22,7 +23,7 @@ export function TimetableGrid({ className, canEdit = false }: { className: strin
   useEffect(() => { setTt(null); load(); }, [load]);
   useEffect(() => { if (canEdit) listTeacherNames().then(setTeachers); }, [canEdit]);
 
-  // Edit a cell locally, then persist on blur. Keeps the grid snappy without a round-trip per keystroke.
+  // Edit a cell locally, then persist on blur — keeps typing snappy without a round-trip per keystroke.
   function editCell(periodId: string, day: number, field: "subject" | "teacher", value: string) {
     setTt((prev) => prev && ({ ...prev, periods: prev.periods.map((p) => {
       if (p.id !== periodId) return p;
@@ -40,52 +41,63 @@ export function TimetableGrid({ className, canEdit = false }: { className: strin
   if (tt === null) return <p className="p-4 text-[13px] text-ink-soft">Loading timetable…</p>;
   if (!className) return <p className="rounded-2xl border border-dashed border-border-soft bg-paper/40 p-6 text-center text-[13px] text-ink-soft">Pick a class to see its timetable.</p>;
 
+  const lessons = tt.periods.filter((p) => !p.isBreak); // already sorted by start time
+  const breaks = tt.periods.filter((p) => p.isBreak);
   const empty = tt.periods.length === 0;
 
   return (
     <div className="grid gap-3">
       {err && <p className="rounded-lg bg-danger-soft px-3 py-2 text-[12px] font-bold text-danger">{err}</p>}
 
-      {empty && !canEdit && (
-        <p className="rounded-2xl border border-dashed border-border-soft bg-paper/40 p-6 text-center text-[13px] text-ink-soft">No timetable has been set up for {className} yet.</p>
+      {empty && !canEdit && <p className="rounded-2xl border border-dashed border-border-soft bg-paper/40 p-6 text-center text-[13px] text-ink-soft">No timetable has been set up for {className} yet.</p>}
+
+      {/* Break / assembly bands, summarised on one line like a printed timetable. */}
+      {breaks.length > 0 && (
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 rounded-xl bg-paper/70 px-3 py-2 text-center text-[12.5px] font-bold text-ink">
+          {breaks.map((b, i) => (
+            <span key={b.id} className="inline-flex items-center gap-2">
+              {i > 0 && <span aria-hidden className="text-ink-soft/40">|</span>}
+              <span>{b.label || "Break"}: {b.startTime}–{b.endTime}</span>
+              {canEdit && <PeriodControls period={b} onChange={load} onErr={setErr} />}
+            </span>
+          ))}
+        </div>
       )}
 
-      {(!empty) && (
+      {lessons.length > 0 && (
         <div className="overflow-x-auto rounded-2xl border border-border-soft bg-white">
-          <table className="w-full min-w-[720px] border-collapse text-[12.5px]">
+          <table className="w-full border-collapse text-center text-[12.5px]">
             <thead>
               <tr className="bg-paper/60 text-ink-soft">
-                <th className="sticky left-0 z-10 border-b border-r border-border-soft bg-paper/60 px-3 py-2.5 text-left text-[11px] font-extrabold uppercase tracking-wide">Time</th>
-                {TIMETABLE_DAYS.map((d, i) => <th key={d} className="border-b border-border-soft px-3 py-2.5 text-left text-[11px] font-extrabold uppercase tracking-wide"><span className="hidden sm:inline">{d}</span><span className="sm:hidden">{DAY_SHORT[i]}</span></th>)}
+                <th className="sticky left-0 z-10 border-b border-r border-border-soft bg-paper/60 px-3 py-2.5" />
+                {lessons.map((p) => (
+                  <th key={p.id} className="min-w-[104px] border-b border-l border-border-soft px-2 py-2 align-top">
+                    <span className="block whitespace-nowrap text-[11.5px] font-extrabold text-ink">{p.startTime}–{p.endTime}</span>
+                    {p.label && <span className="block text-[10px] font-bold text-ink-soft">{p.label}</span>}
+                    {canEdit && <PeriodControls period={p} onChange={load} onErr={setErr} />}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {tt.periods.map((p) => (
-                <tr key={p.id} className={p.isBreak ? "bg-brand-soft/40" : "odd:bg-white even:bg-paper/30"}>
-                  <th className="sticky left-0 z-10 border-r border-t border-border-soft bg-inherit px-3 py-2 text-left align-top">
-                    <span className="block whitespace-nowrap font-extrabold text-ink">{p.startTime}–{p.endTime}</span>
-                    {p.label && <span className="block text-[11px] font-bold text-ink-soft">{p.label}</span>}
-                    {canEdit && <PeriodControls period={p} onChange={load} onErr={setErr} />}
-                  </th>
-                  {p.isBreak ? (
-                    <td colSpan={TIMETABLE_DAYS.length} className="border-t border-border-soft px-3 py-2 text-center text-[12px] font-extrabold uppercase tracking-wide text-brand-blue">{p.label || "Break"}</td>
-                  ) : (
-                    TIMETABLE_DAYS.map((_, day) => {
-                      const s = p.slots[day];
-                      return (
-                        <td key={day} className="border-l border-t border-border-soft px-2 py-1.5 align-top">
-                          {canEdit ? (
-                            <div className="grid gap-1">
-                              <input list="tt-subjects" value={s?.subject ?? ""} onChange={(e) => editCell(p.id, day, "subject", e.target.value)} onBlur={() => saveCell(p, day)} placeholder="Subject" className="w-full rounded-md border border-transparent bg-transparent px-1.5 py-1 text-[12px] font-bold text-ink outline-none hover:border-border-soft focus:border-brand-blue focus:bg-white" />
-                              <input list="tt-teachers" value={s?.teacher ?? ""} onChange={(e) => editCell(p.id, day, "teacher", e.target.value)} onBlur={() => saveCell(p, day)} placeholder="Teacher" className="w-full rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-[11px] text-ink-soft outline-none hover:border-border-soft focus:border-brand-blue focus:bg-white" />
-                            </div>
-                          ) : s?.subject || s?.teacher ? (
-                            <div className="min-w-[92px]"><span className="block font-bold text-ink">{s?.subject}</span>{s?.teacher && <span className="block text-[11px] text-ink-soft">{s.teacher}</span>}</div>
-                          ) : <span className="text-ink-soft/40">–</span>}
-                        </td>
-                      );
-                    })
-                  )}
+              {TIMETABLE_DAYS.map((d, day) => (
+                <tr key={d} className="odd:bg-white even:bg-paper/25">
+                  <th className="sticky left-0 z-10 border-r border-t border-border-soft bg-inherit px-3 py-2 text-[12px] font-extrabold text-ink">{DAY_SHORT[day]}</th>
+                  {lessons.map((p) => {
+                    const s = p.slots[day];
+                    return (
+                      <td key={p.id} className="border-l border-t border-border-soft px-1.5 py-1.5 align-middle">
+                        {canEdit ? (
+                          <div className="grid gap-0.5">
+                            <input list="tt-subjects" value={s?.subject ?? ""} onChange={(e) => editCell(p.id, day, "subject", e.target.value)} onBlur={() => saveCell(p, day)} placeholder="—" className="w-full rounded-md border border-transparent bg-transparent px-1 py-1 text-center text-[12px] font-bold text-ink outline-none hover:border-border-soft focus:border-brand-blue focus:bg-white" />
+                            <input list="tt-teachers" value={s?.teacher ?? ""} onChange={(e) => editCell(p.id, day, "teacher", e.target.value)} onBlur={() => saveCell(p, day)} placeholder="teacher" className="w-full rounded-md border border-transparent bg-transparent px-1 py-0.5 text-center text-[10px] text-ink-soft outline-none hover:border-border-soft focus:border-brand-blue focus:bg-white" />
+                          </div>
+                        ) : s?.subject || s?.teacher ? (
+                          <div><span className="block font-bold leading-tight text-ink">{s?.subject}</span>{s?.teacher && <span className="block text-[10px] text-ink-soft">{s.teacher}</span>}</div>
+                        ) : <span className="text-ink-soft/40">–</span>}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
@@ -102,6 +114,7 @@ export function TimetableGrid({ className, canEdit = false }: { className: strin
   );
 }
 
+// Compact edit/remove for a single period (works for both lesson columns and break bands).
 function PeriodControls({ period, onChange, onErr }: { period: TimetablePeriod; onChange: () => void; onErr: (m: string | null) => void }) {
   const [editing, setEditing] = useState(false);
   const [start, setStart] = useState(period.startTime);
@@ -127,17 +140,19 @@ function PeriodControls({ period, onChange, onErr }: { period: TimetablePeriod; 
   }
 
   if (!editing) return (
-    <div className="mt-1 flex gap-2">
-      <button onClick={() => setEditing(true)} className="text-[10px] font-extrabold uppercase tracking-wide text-brand-blue hover:underline">Edit</button>
-      <button onClick={remove} disabled={busy} className="text-[10px] font-extrabold uppercase tracking-wide text-danger hover:underline disabled:opacity-50">Remove</button>
-    </div>
+    <span className="mt-0.5 flex justify-center gap-2">
+      <button onClick={() => setEditing(true)} className="text-[9.5px] font-extrabold uppercase tracking-wide text-brand-blue hover:underline">Edit</button>
+      <button onClick={remove} disabled={busy} className="text-[9.5px] font-extrabold uppercase tracking-wide text-danger hover:underline disabled:opacity-50">Remove</button>
+    </span>
   );
   return (
-    <div className="mt-1.5 grid w-[160px] gap-1.5">
-      <div className="flex items-center gap-1"><input type="time" value={start} onChange={(e) => setStart(e.target.value)} className="min-w-0 flex-1 rounded border border-border-soft bg-white px-1 py-0.5 text-[11px]" /><span className="text-ink-soft">–</span><input type="time" value={end} onChange={(e) => setEnd(e.target.value)} className="min-w-0 flex-1 rounded border border-border-soft bg-white px-1 py-0.5 text-[11px]" /></div>
-      <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label (optional)" className="rounded border border-border-soft bg-white px-1.5 py-0.5 text-[11px]" />
-      <label className="flex items-center gap-1.5 text-[11px] font-bold text-ink-soft"><input type="checkbox" checked={isBreak} onChange={(e) => setIsBreak(e.target.checked)} />Break / assembly</label>
-      <div className="flex gap-1.5"><button onClick={save} disabled={busy} className="rounded bg-brand-blue px-2 py-1 text-[11px] font-extrabold text-white disabled:opacity-60">Save</button><button onClick={() => setEditing(false)} className="rounded px-2 py-1 text-[11px] font-bold text-ink-soft">Cancel</button></div>
+    <div className="relative mt-1 inline-block text-left">
+      <div className="absolute left-1/2 top-0 z-30 grid w-[168px] -translate-x-1/2 gap-1.5 rounded-xl border border-border-soft bg-white p-2 shadow-[0_16px_40px_rgba(16,33,63,.18)]">
+        <div className="flex items-center gap-1"><input type="time" value={start} onChange={(e) => setStart(e.target.value)} className="min-w-0 flex-1 rounded border border-border-soft bg-white px-1 py-0.5 text-[11px]" /><span className="text-ink-soft">–</span><input type="time" value={end} onChange={(e) => setEnd(e.target.value)} className="min-w-0 flex-1 rounded border border-border-soft bg-white px-1 py-0.5 text-[11px]" /></div>
+        <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label (optional)" className="rounded border border-border-soft bg-white px-1.5 py-0.5 text-[11px]" />
+        <label className="flex items-center gap-1.5 text-[11px] font-bold text-ink-soft"><input type="checkbox" checked={isBreak} onChange={(e) => setIsBreak(e.target.checked)} />Break / assembly</label>
+        <div className="flex gap-1.5"><button onClick={save} disabled={busy} className="rounded bg-brand-blue px-2 py-1 text-[11px] font-extrabold text-white disabled:opacity-60">Save</button><button onClick={() => setEditing(false)} className="rounded px-2 py-1 text-[11px] font-bold text-ink-soft">Cancel</button></div>
+      </div>
     </div>
   );
 }
@@ -155,17 +170,23 @@ function AddPeriodForm({ className, empty, onAdded, onErr }: { className: string
     const r = await addPeriod({ className, startTime: start, endTime: end, label, isBreak });
     setBusy(false);
     if ("error" in r) { onErr(r.error); return; }
-    setLabel(""); setIsBreak(false); onAdded();
+    setLabel(""); onAdded();
   }
+  function quick(asBreak: boolean) { setIsBreak(asBreak); setLabel(asBreak ? "Break" : ""); setOpen(true); }
 
-  if (!open) return <div><Button size="sm" variant="secondary" onClick={() => setOpen(true)}>＋ Add period</Button></div>;
+  if (!open) return (
+    <div className="flex flex-wrap gap-2">
+      <Button size="sm" variant="secondary" onClick={() => quick(false)}>＋ Add period</Button>
+      <Button size="sm" variant="secondary" onClick={() => quick(true)}>＋ Add break</Button>
+    </div>
+  );
   return (
     <div className="rounded-2xl border border-border-soft bg-paper/40 p-3">
-      <p className="mb-2 text-[11px] font-extrabold uppercase tracking-wide text-ink-soft">Add a period to {className}</p>
+      <p className="mb-2 text-[11px] font-extrabold uppercase tracking-wide text-ink-soft">Add {isBreak ? "a break" : "a period"} to {className}</p>
       <div className="flex flex-wrap items-end gap-2">
         <label className="grid gap-1 text-[11px] font-bold text-ink-soft">Start<input type="time" value={start} onChange={(e) => setStart(e.target.value)} className="rounded-lg border border-border-soft bg-white px-2 py-1.5 text-[12px] font-bold text-ink" /></label>
         <label className="grid gap-1 text-[11px] font-bold text-ink-soft">End<input type="time" value={end} onChange={(e) => setEnd(e.target.value)} className="rounded-lg border border-border-soft bg-white px-2 py-1.5 text-[12px] font-bold text-ink" /></label>
-        <label className="grid flex-1 gap-1 text-[11px] font-bold text-ink-soft">Label (optional)<input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Assembly, Break" className="rounded-lg border border-border-soft bg-white px-2 py-1.5 text-[12px]" /></label>
+        <label className="grid flex-1 gap-1 text-[11px] font-bold text-ink-soft">Label {isBreak ? "" : "(optional)"}<input value={label} onChange={(e) => setLabel(e.target.value)} placeholder={isBreak ? "e.g. Lunch, Assembly" : "optional"} className="rounded-lg border border-border-soft bg-white px-2 py-1.5 text-[12px]" /></label>
         <label className="flex items-center gap-1.5 pb-2 text-[12px] font-bold text-ink-soft"><input type="checkbox" checked={isBreak} onChange={(e) => setIsBreak(e.target.checked)} />Break</label>
         <Button size="sm" onClick={add} disabled={busy} className="mb-0.5">{busy ? "Adding…" : "Add"}</Button>
         {!empty && <button onClick={() => setOpen(false)} className="pb-2 text-[12px] font-bold text-ink-soft hover:text-ink">Cancel</button>}
