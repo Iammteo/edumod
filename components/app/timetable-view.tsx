@@ -31,10 +31,10 @@ export function TimetableGrid({ className, canEdit = false }: { className: strin
       return { ...p, slots };
     }) }));
   }
-  async function saveCell(period: TimetablePeriod, day: number) {
-    const s = period.slots[day];
+  // Read the value straight from the input so fast cell-to-cell edits can't save a stale/empty value.
+  async function saveCell(periodId: string, day: number, value: string) {
     setErr(null);
-    const r = await setSlot({ periodId: period.id, day, subject: s?.subject ?? "" });
+    const r = await setSlot({ periodId, day, subject: value });
     if ("error" in r) { setErr(r.error); load(); }
   }
 
@@ -98,7 +98,7 @@ export function TimetableGrid({ className, canEdit = false }: { className: strin
                     return (
                       <td key={p.id} className="border-l border-t border-border-soft px-1.5 py-1.5 align-middle">
                         {edit ? (
-                          <input list="tt-subjects" value={s?.subject ?? ""} onChange={(e) => editCell(p.id, day, e.target.value)} onBlur={() => saveCell(p, day)} placeholder="—" className="w-full rounded-md border border-transparent bg-transparent px-1 py-1.5 text-center text-[12px] font-bold text-ink outline-none hover:border-border-soft focus:border-brand-blue focus:bg-white" />
+                          <input list="tt-subjects" value={s?.subject ?? ""} onChange={(e) => editCell(p.id, day, e.target.value)} onBlur={(e) => saveCell(p.id, day, e.target.value)} placeholder="—" className="w-full rounded-md border border-transparent bg-transparent px-1 py-1.5 text-center text-[12px] font-bold text-ink outline-none hover:border-border-soft focus:border-brand-blue focus:bg-white" />
                         ) : s?.subject ? (
                           <span className="font-bold leading-tight text-ink">{s.subject}</span>
                         ) : <span className="text-ink-soft/40">–</span>}
