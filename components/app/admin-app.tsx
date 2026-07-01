@@ -23,6 +23,7 @@ import { CalendarCard } from "./calendar";
 import { GreetingBanner } from "./greeting-banner";
 import { StudentCredentials } from "./credentials";
 import { ClassManager } from "./class-manager";
+import { DeviceApprovalPopup } from "./device-approval-popup";
 import { StaffClockInView } from "./attendance-view";
 import { StudentAttendanceView } from "./student-attendance-view";
 import { updateSchoolProfile, uploadSchoolLogo, removeSchoolLogo } from "@/lib/actions/school";
@@ -195,6 +196,7 @@ export function AdminApp({ userName, school, students, staff, audit, overview, i
           })}
         </nav>
       </div>
+      <DeviceApprovalPopup />
     </div>
   );
 }

@@ -14,6 +14,7 @@ import { DonutChart, BarChart } from "./charts";
 import { Button } from "./ui";
 import { StudentProfilePage } from "./student-profile";
 import { StudentNavProvider, StudentLink } from "./student-nav";
+import { DeviceApprovalPopup } from "./device-approval-popup";
 import { formatNaira as naira } from "@/lib/format";
 import { getStudentAttendance, getAttendanceAnalytics, type StudentAttendance, type AttendanceAnalytics } from "@/lib/actions/student-attendance";
 import type { StudentOverview, StudentFee, StudentTermResult } from "@/lib/dashboard";
@@ -56,7 +57,7 @@ function FeeRows({ items }: { items: StudentFee[] }) {
 }
 
 /* ---------------- Staff ---------------- */
-type StaffProps = SchoolProps & { term: string; currentSession: string; currentTerm: string; image: string | null; subjects: string[]; assignedClass: string | null; isClassTeacher: boolean; canAddStudents: boolean; classStudents: { id: string; name: string; admissionNo: string }[] };
+type StaffProps = SchoolProps & { term: string; currentSession: string; currentTerm: string; image: string | null; subjects: string[]; assignedClass: string | null; isClassTeacher: boolean; canAddStudents: boolean; isApprover: boolean; classStudents: { id: string; name: string; admissionNo: string }[] };
 const STAFF_HEAD: Record<string, [string, string]> = {
   Overview: ["", ""],
   Attendance: ["Attendance", "Clock in at the terminal and mark your class register."],
@@ -127,7 +128,7 @@ function StaffOverview({ assignedClass, isClassTeacher, classSize, subjects }: {
   );
 }
 
-export function StaffDashboard({ userName, schoolName, schoolCode, term, currentSession, currentTerm, image, subjects, assignedClass, isClassTeacher, canAddStudents, classStudents }: StaffProps) {
+export function StaffDashboard({ userName, schoolName, schoolCode, term, currentSession, currentTerm, image, subjects, assignedClass, isClassTeacher, canAddStudents, isApprover, classStudents }: StaffProps) {
   const [active, setActive] = useState("Overview");
   const [addOpen, setAddOpen] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
@@ -139,6 +140,7 @@ export function StaffDashboard({ userName, schoolName, schoolCode, term, current
   return (
     <DashboardChrome roleLabel="Teacher" school={schoolName} schoolCode={schoolCode} term={term} userName={userName} title={title} subtitle={subtitle} nav={nav} active={active} onSelect={(name) => { setActive(name); setProfileId(null); }} headerAction={profileId ? undefined : headerAction}>
       <StudentNavProvider value={{ openStudent: setProfileId }}>
+      {isApprover && <DeviceApprovalPopup />}
       {profileId ? <StudentProfilePage studentId={profileId} onBack={() => setProfileId(null)} /> : <>
       {active === "Overview" && (
         <>
