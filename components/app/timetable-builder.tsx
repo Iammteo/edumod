@@ -97,6 +97,7 @@ function ClassTimetableTab() {
   const [cls, setCls] = useState("");
   const [level, setLevel] = useState("All");
   const [showBreaks, setShowBreaks] = useState(true);
+  const [activeDay, setActiveDay] = useState<number | "all">("all"); // "all" = full week grid; a number = single-day column entry
   const [teachers, setTeachers] = useState<string[]>([]);
 
   const [tt, setTt] = useState<Timetable | null>(null);
@@ -125,6 +126,22 @@ function ClassTimetableTab() {
     const r = await setSlot({ periodId, day, subject: s?.subject ?? "", teacher: s?.teacher ?? "", room: s?.room ?? "" });
     if ("error" in r) { setErr(r.error); load(); return; }
     setSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+  }
+
+  // The three inputs for one cell, shared by the week grid and the single-day column. `big` gives the
+  // day view a roomier, easier-to-fill layout.
+  function cellFields(p: TimetablePeriod, day: number, big = false) {
+    const s = p.slots[day];
+    const tone = s?.subject ? toneOf(s.subject) : null;
+    return (
+      <div className={`rounded-lg border px-2 py-1.5 transition hover:shadow-[0_0_0_2px_rgba(63,111,224,.25)] ${big ? "min-h-0" : "min-h-[58px]"}`} style={tone ? { backgroundColor: tone.bg, borderColor: `${tone.bar}44`, borderLeft: `3px solid ${tone.bar}` } : { borderColor: "#e2e9f4", borderStyle: "dashed" }}>
+        <input list="tt-subjects" value={s?.subject ?? ""} onChange={(e) => patchCell(p.id, day, "subject", e.target.value)} onBlur={() => saveCell(p.id, day)} placeholder="+ Subject" className={`w-full rounded bg-transparent px-0.5 font-bold outline-none placeholder:font-semibold placeholder:text-ink-soft/50 focus:bg-white/70 ${big ? "text-[13.5px]" : "text-[12px]"}`} style={tone ? { color: tone.text } : undefined} />
+        <div className={big ? "mt-1 grid grid-cols-2 gap-2" : ""}>
+          <input list="tt-teachers" value={s?.teacher ?? ""} onChange={(e) => patchCell(p.id, day, "teacher", e.target.value)} onBlur={() => saveCell(p.id, day)} placeholder="Teacher" className="w-full rounded bg-transparent px-0.5 text-[10.5px] text-ink-soft outline-none placeholder:text-ink-soft/40 focus:bg-white/70" />
+          <input value={s?.room ?? ""} onChange={(e) => patchCell(p.id, day, "room", e.target.value)} onBlur={() => saveCell(p.id, day)} placeholder="Room" className="w-full rounded bg-transparent px-0.5 text-[10.5px] text-ink-soft outline-none placeholder:text-ink-soft/40 focus:bg-white/70" />
+        </div>
+      </div>
+    );
   }
 
   const lessons = tt?.periods.filter((p) => !p.isBreak) ?? [];
@@ -169,7 +186,16 @@ function ClassTimetableTab() {
             {savedAt && <span className="text-[11px] font-bold text-brand-green">✓ Saved {savedAt}</span>}
           </div>
 
-          {tt === null ? <p className="p-6 text-[13px] text-ink-soft">Loading timetable…</p> : (
+          {/* Day selector: enter the timetable one day (column) at a time, or view the whole week. */}
+          <div className="flex flex-wrap items-center gap-1 border-b border-border-soft px-3 py-2">
+            <DayTab label="All week" active={activeDay === "all"} onClick={() => setActiveDay("all")} />
+            {DAY_LONG.map((d, i) => <DayTab key={d} label={DAY_SHORT[i]} active={activeDay === i} onClick={() => setActiveDay(i)} />)}
+            {activeDay !== "all" && <span className="ml-auto text-[11px] font-bold text-ink-soft">Filling {DAY_LONG[activeDay]} — top to bottom</span>}
+          </div>
+
+          {tt === null ? <p className="p-6 text-[13px] text-ink-soft">Loading timetable…</p>
+            : tt.periods.length === 0 ? <p className="py-10 text-center text-[13px] text-ink-soft">No periods yet — add one below to start building.</p>
+            : activeDay === "all" ? (
             <div className="overflow-x-auto p-1.5">
               <table className="w-full min-w-[720px] border-separate border-spacing-1 text-[12px]">
                 <thead>
@@ -179,7 +205,6 @@ function ClassTimetableTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {tt.periods.length === 0 && <tr><td colSpan={6} className="py-10 text-center text-[13px] text-ink-soft">No periods yet — add one below to start building.</td></tr>}
                   {tt.periods.map((p) => p.isBreak ? (
                     showBreaks && (
                       <tr key={p.id}>
@@ -192,23 +217,27 @@ function ClassTimetableTab() {
                   ) : (
                     <tr key={p.id}>
                       <td className="px-2 py-1 align-top text-[10.5px] font-bold text-ink-soft"><span className="whitespace-nowrap">{p.startTime}</span><br/><span className="whitespace-nowrap">{p.endTime}</span><PeriodMenu period={p} onChange={load} onErr={setErr} /></td>
-                      {DAY_LONG.map((_, day) => {
-                        const s = p.slots[day];
-                        const tone = s?.subject ? toneOf(s.subject) : null;
-                        return (
-                          <td key={day} className="p-0 align-top">
-                            <div className="min-h-[58px] rounded-lg border px-2 py-1.5 transition hover:shadow-[0_0_0_2px_rgba(63,111,224,.25)]" style={tone ? { backgroundColor: tone.bg, borderColor: `${tone.bar}44`, borderLeft: `3px solid ${tone.bar}` } : { borderColor: "#e2e9f4", borderStyle: "dashed" }}>
-                              <input list="tt-subjects" value={s?.subject ?? ""} onChange={(e) => patchCell(p.id, day, "subject", e.target.value)} onBlur={() => saveCell(p.id, day)} placeholder="+ Subject" className="w-full rounded bg-transparent px-0.5 text-[12px] font-bold outline-none placeholder:font-semibold placeholder:text-ink-soft/50 focus:bg-white/70" style={tone ? { color: tone.text } : undefined} />
-                              <input list="tt-teachers" value={s?.teacher ?? ""} onChange={(e) => patchCell(p.id, day, "teacher", e.target.value)} onBlur={() => saveCell(p.id, day)} placeholder="Teacher" className="w-full rounded bg-transparent px-0.5 text-[10.5px] text-ink-soft outline-none placeholder:text-ink-soft/40 focus:bg-white/70" />
-                              <input value={s?.room ?? ""} onChange={(e) => patchCell(p.id, day, "room", e.target.value)} onBlur={() => saveCell(p.id, day)} placeholder="Room" className="w-full rounded bg-transparent px-0.5 text-[10.5px] text-ink-soft outline-none placeholder:text-ink-soft/40 focus:bg-white/70" />
-                            </div>
-                          </td>
-                        );
-                      })}
+                      {DAY_LONG.map((_, day) => <td key={day} className="p-0 align-top">{cellFields(p, day)}</td>)}
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+          ) : (
+            /* Single-day column: fast, focused entry down one day */
+            <div className="grid gap-2 p-3">
+              {tt.periods.map((p) => p.isBreak ? (
+                showBreaks && (
+                  <div key={p.id} className="flex items-center gap-2 rounded-lg bg-warn-soft/60 px-3 py-2 text-[12px] font-extrabold uppercase tracking-wide text-warn">
+                    <span className="w-[92px] shrink-0 font-bold normal-case text-ink-soft">{p.startTime}–{p.endTime}</span>{p.label || "Break"}<PeriodMenu period={p} onChange={load} onErr={setErr} />
+                  </div>
+                )
+              ) : (
+                <div key={p.id} className="flex items-start gap-2">
+                  <div className="w-[92px] shrink-0 pt-2 text-[11px] font-bold text-ink-soft"><span className="whitespace-nowrap">{p.startTime}</span><br/><span className="whitespace-nowrap">{p.endTime}</span><PeriodMenu period={p} onChange={load} onErr={setErr} /></div>
+                  <div className="flex-1">{cellFields(p, activeDay, true)}</div>
+                </div>
+              ))}
             </div>
           )}
 
@@ -250,6 +279,9 @@ function ClassTimetableTab() {
 }
 
 /* ---------------- small pieces ---------------- */
+function DayTab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return <button onClick={onClick} className={`rounded-lg px-3 py-1.5 text-[12px] font-bold transition ${active ? "bg-brand-blue text-white" : "text-ink-soft hover:bg-paper"}`}>{label}</button>;
+}
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="grid gap-1"><span className="text-[10.5px] font-extrabold uppercase tracking-wide text-ink-soft">{label}</span>{children}</label>;
 }
