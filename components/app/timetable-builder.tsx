@@ -6,6 +6,7 @@ import { TIMETABLE_DAYS } from "@/lib/timetable-days";
 import { SUBJECTS } from "@/lib/subjects";
 import { useClassNames } from "./use-classes";
 import { useAcademicTerms } from "./use-terms";
+import { exportTimetable } from "@/lib/export-report";
 import { Button } from "./ui";
 
 const DAY_LONG = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -144,6 +145,18 @@ function ClassTimetableTab() {
     );
   }
 
+  const canExport = (tt?.periods.length ?? 0) > 0;
+  function doExport(format: "pdf" | "word") {
+    if (!tt) return;
+    exportTimetable(format, {
+      title: tt.title || `${cls} — Weekly timetable`,
+      subtitle: `${cls}${current ? ` · ${current}` : ""}`,
+      days: DAY_LONG,
+      periods: tt.periods.map((p) => ({ startTime: p.startTime, endTime: p.endTime, label: p.label, isBreak: p.isBreak, slots: p.slots })),
+      filename: `${(cls || "timetable").replace(/\s+/g, "_")}_timetable`,
+    });
+  }
+
   const lessons = tt?.periods.filter((p) => !p.isBreak) ?? [];
   const breaks = tt?.periods.filter((p) => p.isBreak) ?? [];
 
@@ -266,6 +279,10 @@ function ClassTimetableTab() {
 
         <RailCard title="Quick actions">
           <div className="grid gap-1.5">
+            <div className="flex gap-1.5">
+              <Button size="sm" variant="secondary" className="flex-1" disabled={!canExport} onClick={() => doExport("pdf")}>⬇ PDF</Button>
+              <Button size="sm" variant="secondary" className="flex-1" disabled={!canExport} onClick={() => doExport("word")}>⬇ Word</Button>
+            </div>
             <CopyToClasses fromClass={cls} disabled={(tt?.periods.length ?? 0) === 0} onErr={setErr} />
             <span className="text-[11px] text-ink-soft">Auto-arrange & publish land in later phases.</span>
           </div>
