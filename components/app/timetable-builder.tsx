@@ -177,8 +177,8 @@ function ClassTimetableTab() {
   }, [lessons]);
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[1fr_300px]">
-      <div className="grid content-start gap-4">
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="grid min-w-0 content-start gap-4">
         {/* Filter bar */}
         <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-border-soft bg-white p-3.5">
           <Field label="Session / Term"><div className="flex min-h-9 items-center gap-1.5 rounded-lg border border-border-soft bg-paper/50 px-2.5 text-[12.5px] font-bold text-ink">{svg(ICON.grid)}<span className="whitespace-nowrap">{current || "Current term"}</span></div></Field>
@@ -193,7 +193,7 @@ function ClassTimetableTab() {
         {err && <p className="rounded-lg bg-danger-soft px-3 py-2 text-[12px] font-bold text-danger">{err}</p>}
 
         {/* Grid card */}
-        <div className="rounded-2xl border border-border-soft bg-white">
+        <div className="min-w-0 rounded-2xl border border-border-soft bg-white">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-soft px-4 py-3">
             <TitleField className={cls} title={tt?.title ?? ""} onSaved={(t) => setTt((prev) => prev && { ...prev, title: t })} onErr={setErr} />
             {savedAt && <span className="text-[11px] font-bold text-brand-green">✓ Saved {savedAt}</span>}
@@ -353,17 +353,32 @@ function PeriodMenu({ period, onChange, onErr }: { period: TimetablePeriod; onCh
     onChange();
   }
   return (
-    <span className="relative inline-block">
-      <button onClick={() => setEditing((v) => !v)} title="Edit period" className="ml-1 align-middle text-ink-soft/60 hover:text-brand-blue">⋯</button>
-      {editing && <>
-        <div className="fixed inset-0 z-30" onClick={() => setEditing(false)} />
-        <div className="absolute left-0 top-6 z-40 grid w-[176px] gap-1.5 rounded-xl border border-border-soft bg-white p-2 text-left shadow-[0_16px_40px_rgba(16,33,63,.18)]">
-          <div className="flex items-center gap-1"><input type="time" value={start} onChange={(e) => setStart(e.target.value)} className="min-w-0 flex-1 rounded border border-border-soft px-1 py-0.5 text-[11px]" /><span>–</span><input type="time" value={end} onChange={(e) => setEnd(e.target.value)} className="min-w-0 flex-1 rounded border border-border-soft px-1 py-0.5 text-[11px]" /></div>
-          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label (optional)" className="rounded border border-border-soft px-1.5 py-0.5 text-[11px]" />
-          <label className="flex items-center gap-1.5 text-[11px] font-bold text-ink-soft"><input type="checkbox" checked={isBreak} onChange={(e) => setIsBreak(e.target.checked)} />Break / assembly</label>
-          <div className="flex justify-between"><button onClick={save} disabled={busy} className="rounded bg-brand-blue px-2 py-1 text-[11px] font-extrabold text-white disabled:opacity-60">Save</button><button onClick={remove} disabled={busy} className="rounded px-2 py-1 text-[11px] font-bold text-danger">Remove</button></div>
+    <span className="inline-block">
+      <button onClick={() => setEditing(true)} title="Edit period" className="ml-1 align-middle text-ink-soft/60 hover:text-brand-blue">⋯</button>
+      {editing && (
+        // Centered modal so it never gets clipped by the timetable's horizontal scroll area.
+        <div className="fixed inset-0 z-[100] grid place-items-center bg-ink/40 p-4 backdrop-blur-[1px]" onClick={() => setEditing(false)}>
+          <div className="w-full max-w-[300px] rounded-2xl border border-border-soft bg-white p-4 text-left shadow-[0_24px_60px_rgba(16,33,63,.28)]" onClick={(e) => e.stopPropagation()}>
+            <h4 className="mb-3 font-display text-[15px] font-bold text-ink">Edit period</h4>
+            <div className="grid gap-3">
+              <label className="grid gap-1 text-[11px] font-extrabold uppercase tracking-wide text-ink-soft">Time
+                <div className="flex items-center gap-2"><input type="time" value={start} onChange={(e) => setStart(e.target.value)} className="min-h-9 flex-1 rounded-lg border border-border-soft bg-white px-2 text-[13px] font-bold text-ink outline-none focus:border-brand-blue" /><span className="text-ink-soft">–</span><input type="time" value={end} onChange={(e) => setEnd(e.target.value)} className="min-h-9 flex-1 rounded-lg border border-border-soft bg-white px-2 text-[13px] font-bold text-ink outline-none focus:border-brand-blue" /></div>
+              </label>
+              <label className="grid gap-1 text-[11px] font-extrabold uppercase tracking-wide text-ink-soft">Label (optional)
+                <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Assembly, Lunch" className="min-h-9 rounded-lg border border-border-soft bg-white px-2 text-[13px] text-ink outline-none focus:border-brand-blue" />
+              </label>
+              <label className="flex items-center gap-2 text-[12.5px] font-bold text-ink-soft"><input type="checkbox" checked={isBreak} onChange={(e) => setIsBreak(e.target.checked)} className="size-4" />Break / assembly</label>
+            </div>
+            <div className="mt-4 flex items-center justify-between">
+              <button onClick={remove} disabled={busy} className="rounded-lg px-2 py-1.5 text-[12px] font-bold text-danger hover:bg-danger-soft disabled:opacity-60">Remove</button>
+              <div className="flex gap-2">
+                <button onClick={() => setEditing(false)} className="rounded-lg px-3 py-1.5 text-[12px] font-bold text-ink-soft hover:text-ink">Cancel</button>
+                <Button size="sm" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save"}</Button>
+              </div>
+            </div>
+          </div>
         </div>
-      </>}
+      )}
     </span>
   );
 }

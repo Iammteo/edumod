@@ -47,7 +47,7 @@ export function TimetableGrid({ className, canEdit = false }: { className: strin
   const edit = canEdit && editing; // editing chrome stays hidden until the user opts in
 
   return (
-    <div className="grid gap-3">
+    <div className="grid min-w-0 gap-3">
       {/* Top bar: the clean grid shows by default; one button toggles editing. */}
       {canEdit && (
         <div className="flex justify-end">
@@ -75,8 +75,8 @@ export function TimetableGrid({ className, canEdit = false }: { className: strin
       )}
 
       {lessons.length > 0 && (
-        <div className="overflow-x-auto rounded-2xl border border-border-soft bg-white">
-          <table className="w-full border-collapse text-center text-[12.5px]">
+        <div className="min-w-0 overflow-x-auto rounded-2xl border border-border-soft bg-white">
+          <table className="w-full min-w-[560px] border-collapse text-center text-[12.5px]">
             <thead>
               <tr className="bg-paper/60 text-ink-soft">
                 <th className="sticky left-0 z-10 border-b border-r border-border-soft bg-paper/60 px-3 py-2.5" />
