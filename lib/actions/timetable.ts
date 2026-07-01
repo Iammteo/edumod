@@ -3,16 +3,16 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { getAuthContext } from "@/lib/auth/context";
-import { timetablePeriods, timetableSlots, memberships, users, staffProfiles } from "@/db/schema";
+import { timetablePeriods, timetableSlots, timetableMeta } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
 import { TIMETABLE_DAYS } from "@/lib/timetable-days";
 
-export type TimetableSlot = { subject: string | null; teacher: string | null; room: string | null };
+export type TimetableSlot = { subject: string | null };
 export type TimetablePeriod = {
   id: string; startTime: string; endTime: string; label: string | null; isBreak: boolean;
   slots: (TimetableSlot | null)[]; // one per day, index-aligned with TIMETABLE_DAYS
 };
-export type Timetable = { className: string; periods: TimetablePeriod[] };
+export type Timetable = { className: string; title: string; periods: TimetablePeriod[] };
 
 async function ctx() {
   const a = await getAuthContext();
@@ -29,10 +29,13 @@ const cleanName = (v: string) => v.trim().replace(/\s+/g, " ");
 export async function getTimetable(className: string): Promise<Timetable> {
   const c = await ctx();
   const cn = cleanName(className);
-  if (!c || !cn) return { className: cn, periods: [] };
-  const periods = await db.select().from(timetablePeriods)
-    .where(and(eq(timetablePeriods.schoolId, c.schoolId), eq(timetablePeriods.className, cn)));
-  if (periods.length === 0) return { className: cn, periods: [] };
+  if (!c || !cn) return { className: cn, title: "", periods: [] };
+  const [periods, [meta]] = await Promise.all([
+    db.select().from(timetablePeriods).where(and(eq(timetablePeriods.schoolId, c.schoolId), eq(timetablePeriods.className, cn))),
+    db.select({ title: timetableMeta.title }).from(timetableMeta).where(and(eq(timetableMeta.schoolId, c.schoolId), eq(timetableMeta.className, cn))).limit(1),
+  ]);
+  const title = meta?.title ?? "";
+  if (periods.length === 0) return { className: cn, title, periods: [] };
   const slots = await db.select().from(timetableSlots).where(inArray(timetableSlots.periodId, periods.map((p) => p.id)));
   const byPeriod = new Map<string, typeof slots>();
   for (const s of slots) (byPeriod.get(s.periodId) ?? byPeriod.set(s.periodId, []).get(s.periodId)!).push(s);
@@ -42,22 +45,27 @@ export async function getTimetable(className: string): Promise<Timetable> {
       const mine = byPeriod.get(p.id) ?? [];
       const slotsByDay: (TimetableSlot | null)[] = TIMETABLE_DAYS.map((_, day) => {
         const s = mine.find((x) => x.day === day);
-        return s ? { subject: s.subject, teacher: s.teacher, room: s.room } : null;
+        return s ? { subject: s.subject } : null;
       });
       return { id: p.id, startTime: p.startTime, endTime: p.endTime, label: p.label, isBreak: p.isBreak, slots: slotsByDay };
     });
-  return { className: cn, periods: rows };
+  return { className: cn, title, periods: rows };
 }
 
-// Teacher / subject-teacher names for the slot picker's datalist.
-export async function listTeacherNames(): Promise<string[]> {
+// Set (or clear) the custom heading shown above a class's timetable.
+export async function setTimetableTitle(input: { className: string; title: string }): Promise<{ ok: true } | { error: string }> {
   const c = await ctx();
-  if (!c) return [];
-  const rows = await db.select({ name: users.name }).from(memberships)
-    .innerJoin(users, eq(users.id, memberships.userId))
-    .leftJoin(staffProfiles, eq(staffProfiles.userId, memberships.userId))
-    .where(and(eq(memberships.schoolId, c.schoolId), inArray(memberships.role, ["teacher", "principal", "vice_principal"])));
-  return [...new Set(rows.map((r) => r.name).filter(Boolean))].sort();
+  if (!c?.canManage) return { error: "You don't have permission to edit the timetable." };
+  const className = cleanName(input.className);
+  if (!className) return { error: "Pick a class first." };
+  const title = input.title.trim().slice(0, 160) || null;
+  try {
+    await db.insert(timetableMeta).values({ schoolId: c.schoolId, className, title })
+      .onConflictDoUpdate({ target: [timetableMeta.schoolId, timetableMeta.className], set: { title, updatedAt: new Date() } });
+    return { ok: true };
+  } catch {
+    return { error: "Could not save the title. Please try again." };
+  }
 }
 
 export async function addPeriod(input: { className: string; startTime: string; endTime: string; label?: string; isBreak?: boolean }): Promise<{ ok: true; id: string } | { error: string }> {
@@ -112,25 +120,23 @@ export async function deletePeriod(id: string): Promise<{ ok: true } | { error: 
   }
 }
 
-// Upsert one cell. Clearing every field removes the row so the grid stays sparse.
-export async function setSlot(input: { periodId: string; day: number; subject?: string; teacher?: string; room?: string }): Promise<{ ok: true } | { error: string }> {
+// Upsert one cell's subject. Clearing it removes the row so the grid stays sparse.
+export async function setSlot(input: { periodId: string; day: number; subject?: string }): Promise<{ ok: true } | { error: string }> {
   const c = await ctx();
   if (!c?.canManage) return { error: "You don't have permission to edit the timetable." };
   if (!Number.isInteger(input.day) || input.day < 0 || input.day >= TIMETABLE_DAYS.length) return { error: "Invalid day." };
   const subject = input.subject?.trim().slice(0, 120) || null;
-  const teacher = input.teacher?.trim().slice(0, 120) || null;
-  const room = input.room?.trim().slice(0, 60) || null;
   try {
     // Confirm the period belongs to this school before touching its slots.
     const [p] = await db.select({ id: timetablePeriods.id }).from(timetablePeriods)
       .where(and(eq(timetablePeriods.id, input.periodId), eq(timetablePeriods.schoolId, c.schoolId))).limit(1);
     if (!p) return { error: "That period no longer exists." };
-    if (!subject && !teacher && !room) {
+    if (!subject) {
       await db.delete(timetableSlots).where(and(eq(timetableSlots.periodId, input.periodId), eq(timetableSlots.day, input.day)));
       return { ok: true };
     }
-    await db.insert(timetableSlots).values({ schoolId: c.schoolId, periodId: input.periodId, day: input.day, subject, teacher, room })
-      .onConflictDoUpdate({ target: [timetableSlots.periodId, timetableSlots.day], set: { subject, teacher, room, updatedAt: new Date() } });
+    await db.insert(timetableSlots).values({ schoolId: c.schoolId, periodId: input.periodId, day: input.day, subject })
+      .onConflictDoUpdate({ target: [timetableSlots.periodId, timetableSlots.day], set: { subject, updatedAt: new Date() } });
     return { ok: true };
   } catch {
     return { error: "Could not save that. Please try again." };

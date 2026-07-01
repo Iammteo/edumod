@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { getTimetable, listTeacherNames, addPeriod, updatePeriod, deletePeriod, setSlot, type Timetable, type TimetablePeriod } from "@/lib/actions/timetable";
+import { getTimetable, setTimetableTitle, addPeriod, updatePeriod, deletePeriod, setSlot, type Timetable, type TimetablePeriod } from "@/lib/actions/timetable";
 import { TIMETABLE_DAYS } from "@/lib/timetable-days";
 import { SUBJECTS } from "@/lib/subjects";
 import { Button } from "./ui";
@@ -10,31 +10,29 @@ const DAY_SHORT = ["MON", "TUE", "WED", "THU", "FRI"];
 
 // One class's weekly timetable, laid out like a printed school timetable: days down the side, lesson
 // periods across the top, and break/assembly bands summarised in a line above the grid. Read-only
-// unless `canEdit`, in which case subject cells are inline-editable and periods can be managed.
+// unless `canEdit`, in which case the title and subject cells are inline-editable and periods managed.
 export function TimetableGrid({ className, canEdit = false }: { className: string; canEdit?: boolean }) {
   const [tt, setTt] = useState<Timetable | null>(null);
-  const [teachers, setTeachers] = useState<string[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    if (!className) { setTt({ className: "", periods: [] }); return; }
+    if (!className) { setTt({ className: "", title: "", periods: [] }); return; }
     getTimetable(className).then(setTt);
   }, [className]);
   useEffect(() => { setTt(null); load(); }, [load]);
-  useEffect(() => { if (canEdit) listTeacherNames().then(setTeachers); }, [canEdit]);
 
   // Edit a cell locally, then persist on blur — keeps typing snappy without a round-trip per keystroke.
-  function editCell(periodId: string, day: number, field: "subject" | "teacher", value: string) {
+  function editCell(periodId: string, day: number, value: string) {
     setTt((prev) => prev && ({ ...prev, periods: prev.periods.map((p) => {
       if (p.id !== periodId) return p;
-      const slots = p.slots.map((s, d) => d === day ? { subject: s?.subject ?? null, teacher: s?.teacher ?? null, room: s?.room ?? null, [field]: value || null } : s);
+      const slots = p.slots.map((s, d) => d === day ? { subject: value || null } : s);
       return { ...p, slots };
     }) }));
   }
   async function saveCell(period: TimetablePeriod, day: number) {
     const s = period.slots[day];
     setErr(null);
-    const r = await setSlot({ periodId: period.id, day, subject: s?.subject ?? "", teacher: s?.teacher ?? "" });
+    const r = await setSlot({ periodId: period.id, day, subject: s?.subject ?? "" });
     if ("error" in r) { setErr(r.error); load(); }
   }
 
@@ -48,6 +46,8 @@ export function TimetableGrid({ className, canEdit = false }: { className: strin
   return (
     <div className="grid gap-3">
       {err && <p className="rounded-lg bg-danger-soft px-3 py-2 text-[12px] font-bold text-danger">{err}</p>}
+
+      <TimetableTitle className={className} title={tt.title} canEdit={canEdit} onSaved={(t) => setTt((prev) => prev && { ...prev, title: t })} onErr={setErr} />
 
       {empty && !canEdit && <p className="rounded-2xl border border-dashed border-border-soft bg-paper/40 p-6 text-center text-[13px] text-ink-soft">No timetable has been set up for {className} yet.</p>}
 
@@ -88,12 +88,9 @@ export function TimetableGrid({ className, canEdit = false }: { className: strin
                     return (
                       <td key={p.id} className="border-l border-t border-border-soft px-1.5 py-1.5 align-middle">
                         {canEdit ? (
-                          <div className="grid gap-0.5">
-                            <input list="tt-subjects" value={s?.subject ?? ""} onChange={(e) => editCell(p.id, day, "subject", e.target.value)} onBlur={() => saveCell(p, day)} placeholder="—" className="w-full rounded-md border border-transparent bg-transparent px-1 py-1 text-center text-[12px] font-bold text-ink outline-none hover:border-border-soft focus:border-brand-blue focus:bg-white" />
-                            <input list="tt-teachers" value={s?.teacher ?? ""} onChange={(e) => editCell(p.id, day, "teacher", e.target.value)} onBlur={() => saveCell(p, day)} placeholder="teacher" className="w-full rounded-md border border-transparent bg-transparent px-1 py-0.5 text-center text-[10px] text-ink-soft outline-none hover:border-border-soft focus:border-brand-blue focus:bg-white" />
-                          </div>
-                        ) : s?.subject || s?.teacher ? (
-                          <div><span className="block font-bold leading-tight text-ink">{s?.subject}</span>{s?.teacher && <span className="block text-[10px] text-ink-soft">{s.teacher}</span>}</div>
+                          <input list="tt-subjects" value={s?.subject ?? ""} onChange={(e) => editCell(p.id, day, e.target.value)} onBlur={() => saveCell(p, day)} placeholder="—" className="w-full rounded-md border border-transparent bg-transparent px-1 py-1.5 text-center text-[12px] font-bold text-ink outline-none hover:border-border-soft focus:border-brand-blue focus:bg-white" />
+                        ) : s?.subject ? (
+                          <span className="font-bold leading-tight text-ink">{s.subject}</span>
                         ) : <span className="text-ink-soft/40">–</span>}
                       </td>
                     );
@@ -108,9 +105,34 @@ export function TimetableGrid({ className, canEdit = false }: { className: strin
       {canEdit && <>
         <AddPeriodForm className={className} empty={empty} onAdded={load} onErr={setErr} />
         <datalist id="tt-subjects">{SUBJECTS.map((s) => <option key={s} value={s} />)}</datalist>
-        <datalist id="tt-teachers">{teachers.map((t) => <option key={t} value={t} />)}</datalist>
       </>}
     </div>
+  );
+}
+
+// Editable heading above the grid. Read-only shows the title (hidden if blank); edit mode is an inline
+// input saved on blur.
+function TimetableTitle({ className, title, canEdit, onSaved, onErr }: { className: string; title: string; canEdit: boolean; onSaved: (t: string) => void; onErr: (m: string | null) => void }) {
+  const [value, setValue] = useState(title);
+  useEffect(() => { setValue(title); }, [title, className]);
+
+  async function save() {
+    if (value.trim() === title.trim()) return;
+    onErr(null);
+    const r = await setTimetableTitle({ className, title: value });
+    if ("error" in r) { onErr(r.error); return; }
+    onSaved(value.trim());
+  }
+
+  if (!canEdit) return title ? <h3 className="text-center font-display text-[17px] font-bold text-ink">{title}</h3> : null;
+  return (
+    <input
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={save}
+      placeholder="Add a title (e.g. Class Timetable — JSS 1A)"
+      className="mx-auto w-full max-w-md rounded-lg border border-transparent bg-transparent px-2 py-1.5 text-center font-display text-[17px] font-bold text-ink outline-none transition placeholder:text-[13px] placeholder:font-bold placeholder:text-ink-soft/60 hover:border-border-soft focus:border-brand-blue focus:bg-white"
+    />
   );
 }
 
