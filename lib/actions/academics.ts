@@ -9,7 +9,9 @@ import { logAudit } from "@/lib/audit";
 async function ctx() {
   const a = await getAuthContext();
   if (!a) return null;
-  return { userId: a.userId, schoolId: a.schoolId, isAdmin: ["school_admin", "principal", "vice_principal", "secretary"].includes(a.role) };
+  // Only the school admin creates/switches/removes sessions & terms; everyone else just reads them
+  // (listAcademicTerms is open to any member).
+  return { userId: a.userId, schoolId: a.schoolId, isAdmin: a.role === "school_admin" };
 }
 
 export type SessionTerm = { session: string; term: string; current: boolean };

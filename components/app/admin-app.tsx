@@ -165,7 +165,7 @@ export function AdminApp({ userName, school, students, staff, audit, overview, i
 
         <main className="overflow-x-hidden p-4 pb-24 sm:p-6 sm:pb-24 lg:px-7 lg:py-6 lg:pb-6">
           <StudentNavProvider value={{ openStudent: (id) => navigate("students", id) }}>
-          {active === "overview" && <Overview userName={userName} school={details} students={students} staff={staff} audit={audit} overview={overview} notifOpen={notifOpen} setNotifOpen={setNotifOpen} goto={navigate} onNotif={onNotif} onSchoolChange={(patch) => setDetails((d) => ({ ...d, ...patch }))} />}
+          {active === "overview" && <Overview userName={userName} school={details} students={students} staff={staff} audit={audit} overview={overview} notifOpen={notifOpen} setNotifOpen={setNotifOpen} goto={navigate} onNotif={onNotif} onSchoolChange={(patch) => setDetails((d) => ({ ...d, ...patch }))} canManageTerm={!restricted} />}
           {active === "students" && <Students students={students} openStudentId={deepStudent} onConsumed={() => setDeepStudent(null)} section={studentsSection} onSection={setStudentsSection} />}
           {active === "staff" && !restricted && <><DeviceApprovals /><StaffView staff={staff} /></>}
           {active === "settings" && !restricted && <div className="grid gap-[18px]"><Settings school={details} logo={logo} onLogo={setLogo} onSaved={setDetails} /><TwoFactorSettings /><SessionManager /></div>}
@@ -279,7 +279,7 @@ function NotifBell({ open, setOpen, audit, onViewAll, onNavigate }: { open: bool
 }
 
 /* ---------- Overview ---------- */
-function WelcomeBanner({ userName, school, onSchoolChange }: { userName: string; school: School; onSchoolChange: (patch: Partial<School>) => void }) {
+function WelcomeBanner({ userName, school, onSchoolChange, canManage }: { userName: string; school: School; onSchoolChange: (patch: Partial<School>) => void; canManage: boolean }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [list, setList] = useState<SessionTerm[] | null>(null);
@@ -322,7 +322,7 @@ function WelcomeBanner({ userName, school, onSchoolChange }: { userName: string;
     <GreetingBanner
       userName={userName}
       subtitle={`${school.currentTerm} · ${school.currentSession} session · here’s what’s happening today.`}
-      control={(<>
+      control={canManage ? (<>
           <button onClick={() => setOpen((v) => !v)} disabled={saving} aria-haspopup="listbox" aria-expanded={open} className="inline-flex items-center gap-2 rounded-[12px] bg-white/95 px-3.5 py-2.5 text-[13px] font-bold text-ink shadow-[0_4px_14px_rgba(16,33,63,.18)] transition hover:bg-white disabled:opacity-70"><span className="text-brand-blue">{I(<><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></>)}</span>{school.currentSession} · {school.currentTerm}{saving ? <span className="inline-block size-3.5 animate-spin rounded-full border-2 border-ink-soft/30 border-t-ink-soft" /> : <span className={`transition ${open ? "rotate-180" : ""}`}>{I(<path d="m6 9 6 6 6-6" />)}</span>}</button>
           {open && <><div className="fixed inset-0 z-40" onClick={() => { setOpen(false); setAdding(false); }} /><div className="absolute left-0 top-[calc(100%+6px)] z-50 max-h-[60vh] w-64 overflow-y-auto rounded-xl border border-border-soft bg-white p-1.5 text-ink shadow-[0_20px_50px_rgba(16,33,63,.2)] motion-safe:animate-[fade-up_.2s_ease]">
             <p className="px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">Switch session &amp; term</p>
@@ -351,7 +351,7 @@ function WelcomeBanner({ userName, school, onSchoolChange }: { userName: string;
             </div>
             {err && <p className="px-2 py-1 text-[11px] font-bold text-danger">{err}</p>}
           </div></>}
-      </>)}
+      </>) : undefined}
     />
   );
 }
@@ -427,7 +427,7 @@ function ClassesOverviewCard({ classList, onAll }: { classList: { className: str
   );
 }
 
-function Overview({ userName, school, students, staff, audit, overview, goto, onNotif, onSchoolChange }: { userName: string; school: School; students: Student[]; staff: Staff[]; audit: Audit[]; overview: AdminOverview; notifOpen: boolean; setNotifOpen: (v: boolean) => void; goto: (s: string, studentId?: string) => void; onNotif: (a: Audit) => void; onSchoolChange: (patch: Partial<School>) => void }) {
+function Overview({ userName, school, students, staff, audit, overview, goto, onNotif, onSchoolChange, canManageTerm }: { userName: string; school: School; students: Student[]; staff: Staff[]; audit: Audit[]; overview: AdminOverview; notifOpen: boolean; setNotifOpen: (v: boolean) => void; goto: (s: string, studentId?: string) => void; onNotif: (a: Audit) => void; onSchoolChange: (patch: Partial<School>) => void; canManageTerm: boolean }) {
   const totalStudents = students.length;
   const teachers = staff.filter((s) => s.teacherType.includes("teacher") || s.role === "teacher").length || staff.length;
   const { jss, sss, primary, other } = overview.sections;
@@ -448,7 +448,7 @@ function Overview({ userName, school, students, staff, audit, overview, goto, on
   ].filter((s) => s.value > 0);
   return (
     <>
-      <WelcomeBanner userName={userName} school={school} onSchoolChange={onSchoolChange} />
+      <WelcomeBanner userName={userName} school={school} onSchoolChange={onSchoolChange} canManage={canManageTerm} />
 
       {/* Mobile: calendar sits under the greeting, before the stat cards. On desktop it lives in the right rail. */}
       <div className="mb-[18px] xl:hidden"><CalendarCard canManage /></div>
