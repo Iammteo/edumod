@@ -1,9 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { getExamTimetable, addExamPaper, deleteExamPaper, EXAM_TYPES, type ExamTimetable, type ExamPaper, type ExamClash } from "@/lib/actions/exam-timetable";
+import { getExamTimetable, addExamPaper, deleteExamPaper, type ExamTimetable, type ExamPaper, type ExamClash } from "@/lib/actions/exam-timetable";
 import { listTeacherNames } from "@/lib/actions/timetable";
 import { SUBJECTS } from "@/lib/subjects";
+
+// Exam types (kept here, not in the "use server" actions file — that file may only export async functions).
+const EXAM_TYPES = ["Mock", "Continuous Assessment", "Mid-term", "Terminal Exam", "WAEC-style"] as const;
 import { useClassNames } from "./use-classes";
 import { useAcademicTerms } from "./use-terms";
 import { exportReport } from "@/lib/export-report";

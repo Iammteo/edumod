@@ -6,8 +6,6 @@ import { getAuthContext } from "@/lib/auth/context";
 import { examPapers } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
 
-export const EXAM_TYPES = ["Mock", "Continuous Assessment", "Mid-term", "Terminal Exam", "WAEC-style"] as const;
-
 export type ExamPaper = {
   id: string; term: string; examType: string; className: string; subject: string;
   examDate: string; startTime: string; endTime: string; room: string | null; invigilator: string | null; isWaec: boolean; notes: string | null;
