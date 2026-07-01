@@ -13,7 +13,7 @@ import { generateStudentPassword } from "@/lib/identity/password";
 import { logAudit } from "@/lib/audit";
 import { composeUsername, normalizeIdentifier } from "@/lib/identity/student-id";
 import { generateStaffId } from "@/lib/identity/staff-id";
-import { isLockedOut, recordFailure, clearFailures } from "@/lib/rate-limit";
+import { isLockedOut, recordFailure, clearFailures, LOCKOUT_MINUTES } from "@/lib/rate-limit";
 import { getOrCreateDeviceId, evaluateStaffDevice } from "@/lib/device-trust";
 import { encryptSecret } from "@/lib/crypto";
 import { sendSchoolCodeEmail, sendEmail } from "@/lib/email";
@@ -274,7 +274,7 @@ export async function studentLogin(input: { schoolCode: string; studentId: strin
   const ip = (h.get("x-forwarded-for")?.split(",")[0] || h.get("x-real-ip") || "unknown").trim();
   const usernameValue = composeUsername(input.schoolCode, input.studentId);
   const keys = [`user:${usernameValue}`, `ip:${ip}`];
-  if (await isLockedOut(keys)) return { error: "Too many attempts. Please wait a few minutes and try again." };
+  if (await isLockedOut(keys)) return { error: `Too many failed attempts. For security this login is locked for ${LOCKOUT_MINUTES} minutes — please try again after that.` };
   try {
     await (auth.api as unknown as { signInUsername(a: { body: { username: string; password: string; rememberMe: boolean }; headers: Headers }): Promise<unknown> })
       .signInUsername({ body: { username: usernameValue, password: input.password, rememberMe: false }, headers: h as unknown as Headers });
@@ -293,7 +293,7 @@ export async function staffLogin(input: { staffId: string; password: string }): 
   const ip = (h.get("x-forwarded-for")?.split(",")[0] || h.get("x-real-ip") || "unknown").trim();
   const usernameValue = normalizeIdentifier(input.staffId);
   const keys = [`user:${usernameValue}`, `ip:${ip}`];
-  if (await isLockedOut(keys)) return { error: "Too many attempts. Please wait a few minutes and try again." };
+  if (await isLockedOut(keys)) return { error: `Too many failed attempts. For security this login is locked for ${LOCKOUT_MINUTES} minutes — please try again after that.` };
   // Block disabled/departed staff before authenticating (offboarding gate).
   const [prof] = await db.select({ userId: users.id, status: staffProfiles.status, role: memberships.role, schoolId: memberships.schoolId })
     .from(users).leftJoin(staffProfiles, eq(staffProfiles.userId, users.id)).leftJoin(memberships, eq(memberships.userId, users.id))

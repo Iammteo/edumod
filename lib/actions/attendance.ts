@@ -12,7 +12,7 @@ import { memberships, schools, staffProfiles, teacherAttendanceLogs, users } fro
 import { signQrToken, verifyQrToken } from "@/lib/attendance-token";
 import { attendanceUploadQueue } from "@/lib/queues";
 import { logAudit } from "@/lib/audit";
-import { consumeOnce, isLockedOut, recordFailure, clearFailures } from "@/lib/rate-limit";
+import { consumeOnce, isLockedOut, recordFailure, clearFailures, LOCKOUT_MINUTES } from "@/lib/rate-limit";
 import { startOfTodayTz } from "@/lib/tz";
 import { roleLabel } from "@/lib/format";
 
@@ -246,7 +246,7 @@ export async function handleKioskPinClockIn(input: { teacherId: string; pin: str
   // Cap PIN guessing per teacher/terminal (6-digit PIN = 1M space) — without this a terminal operator
   // could brute-force a colleague's PIN.
   const pinKeys = [`kioskpin:${c.schoolId}:${teacherId}`];
-  if (await isLockedOut(pinKeys)) return { error: "Too many incorrect PIN attempts. Please try again later." };
+  if (await isLockedOut(pinKeys)) return { error: `Too many incorrect PIN attempts. Locked for ${LOCKOUT_MINUTES} minutes — please try again after that.` };
   if (!(await bcrypt.compare(pin, row.pin))) { await recordFailure(pinKeys); return { error: "Incorrect PIN." }; }
   await clearFailures(pinKeys);
 
