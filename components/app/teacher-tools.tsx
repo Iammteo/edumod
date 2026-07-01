@@ -5,10 +5,10 @@ import { getMyAttendance, handleQrClockIn, setClockInPin, type MyAttendance } fr
 import { saveClassResults, getClassResults } from "@/lib/actions/students";
 import { Button } from "./ui";
 import { QrScanModal } from "./qr-scanner";
+import { SUBJECTS } from "@/lib/subjects";
+import { useAcademicTerms } from "./use-terms";
 
 const METHOD: Record<string, string> = { qr_scan: "QR", kiosk_pin: "PIN", admin_override: "Override", self_portal: "Portal" };
-const SUBJECTS = ["Mathematics", "English Language", "Basic Science", "Basic Technology", "Social Studies", "Civic Education", "Agricultural Science", "Computer Studies / ICT", "Physics", "Chemistry", "Biology", "Economics", "Government", "Literature-in-English", "Geography", "Further Mathematics"];
-const TERMS = ["2023/2024 · Term 1", "2023/2024 · Term 2", "2023/2024 · Term 3", "2024/2025 · Term 1"];
 const inputCls = "min-h-9 w-full rounded-[9px] border border-border-soft bg-paper/60 px-2.5 text-[12px] text-ink outline-none focus:border-brand-blue focus:bg-white";
 
 /* ---------- My attendance (clock in/out, status, history, PIN) ---------- */
@@ -81,14 +81,19 @@ function PinSetup({ mySet, onDone }: { mySet: boolean; onDone: () => void }) {
 
 /* ---------- Record results for my class ---------- */
 // Pick a term + subject, then enter CA/exam for the WHOLE class in one grid and save at once.
-export function RecordResults({ classStudents }: { classStudents: { id: string; name: string; admissionNo: string }[] }) {
-  const [term, setTerm] = useState(TERMS[1]);
+export function RecordResults({ classStudents, subjects = [] }: { classStudents: { id: string; name: string; admissionNo: string }[]; subjects?: string[] }) {
+  const { terms, current } = useAcademicTerms();
+  const [term, setTerm] = useState("");
   const [subject, setSubject] = useState("");
   const [scores, setScores] = useState<Record<string, { ca: string; exam: string }>>({});
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<{ ok?: string; err?: string } | null>(null);
 
+  // Default to the school's current term once the real terms load.
+  useEffect(() => { if (current) setTerm((t) => t || current); }, [current]);
+
+  const subjectOptions = [...new Set([...subjects, ...SUBJECTS])];
   const subj = subject.trim();
   const idsKey = classStudents.map((s) => s.id).join(",");
 
@@ -126,9 +131,9 @@ export function RecordResults({ classStudents }: { classStudents: { id: string; 
   if (classStudents.length === 0) return <p className="text-[12px] text-ink-soft">No students in your class yet - ask your admin to assign them.</p>;
   return (
     <div className="grid gap-3">
-      <datalist id="subj">{SUBJECTS.map((s) => <option key={s} value={s} />)}</datalist>
+      <datalist id="subj">{subjectOptions.map((s) => <option key={s} value={s} />)}</datalist>
       <div className="grid gap-2.5 sm:grid-cols-2">
-        <label className="grid gap-1"><span className="text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">Term</span><select value={term} onChange={(e) => setTerm(e.target.value)} className={inputCls}>{TERMS.map((t) => <option key={t}>{t}</option>)}</select></label>
+        <label className="grid gap-1"><span className="text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">Term</span><select value={term} onChange={(e) => setTerm(e.target.value)} className={inputCls}>{terms.length === 0 && <option value="">No terms yet</option>}{terms.map((t) => <option key={t}>{t}</option>)}</select></label>
         <label className="grid gap-1"><span className="text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">Subject</span><input list="subj" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Mathematics" className={inputCls} /></label>
       </div>
 

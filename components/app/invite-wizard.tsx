@@ -4,8 +4,8 @@ import { useMemo, useState } from "react";
 import { inviteStaff, type StaffRole } from "@/lib/actions/people";
 import { AREAS, AREA_LABELS, LEVELS, ROLES, buildMatrix, buildSummary, type Area, type Level, type RoleKey } from "@/lib/permissions";
 import { useClassNames } from "@/components/app/use-classes";
+import { SUBJECTS } from "@/lib/subjects";
 
-const SUBJECTS = ["English Language", "Mathematics", "Literature", "Physics", "Chemistry", "Biology", "Further Maths", "Civic Education", "Economics", "Geography", "Basic Science", "Social Studies"];
 const EMPLOYMENT = ["Full-time", "Part-time", "Contract"];
 const STEPS = ["Staff details", "Teaching responsibilities", "Access summary", "Review & send"];
 

@@ -180,7 +180,7 @@ export function StaffDashboard({ userName, schoolName, schoolCode, term, current
         </div>
       )}
 
-      {active === "Results" && isClassTeacher && <Panel title="Record results"><RecordResults classStudents={classStudents} /></Panel>}
+      {active === "Results" && isClassTeacher && <Panel title="Record results"><RecordResults classStudents={classStudents} subjects={subjects} /></Panel>}
 
       {active === "My profile" && (
         <Panel title="My profile">
