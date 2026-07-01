@@ -523,7 +523,7 @@ function Students({ students, openStudentId, onConsumed, section, onSection }: {
       {showAdd && <div className="mb-[18px]"><Card title="Add a student"><div className="grid gap-[18px] sm:grid-cols-2"><AddStudentForm /><div className="border-t border-border-soft pt-4 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0"><p className="mb-3 text-[12px] font-extrabold text-ink">Reset a student&rsquo;s password</p><ResetStudentPasswordForm /></div></div></Card></div>}
       {showLogins && <div className="mb-[18px]"><Card title="Student logins"><StudentCredentials students={students} /></Card></div>}
       {showPromote && <div className="mb-[18px]"><PromotionScreen /></div>}
-      {!showPromote && <Card>
+      {!showPromote && !showClasses && <Card>
         <div className="mb-4 flex flex-col gap-2.5 sm:flex-row sm:items-center">
           <div className="flex flex-1 items-center gap-2 rounded-[10px] border border-border-soft bg-paper/60 px-3"><span className="text-ink-soft">{I(<><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></>)}</span><input value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} placeholder="Search students…" className="min-h-9 flex-1 bg-transparent text-[13px] outline-none" /></div>
           <FilterSelect value={classF} onChange={(v) => { setClassF(v); setPage(1); }} options={classOpts.map((c) => ({ v: c, label: c === "all" ? "All classes" : c }))} />
