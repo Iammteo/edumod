@@ -98,11 +98,12 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
     setSending("email");
     try {
       if (!isLogin) {
-        // Step 1: create the admin account, then email a verification OTP.
+        // Step 1: create the admin account, then email a verification OTP. accountType is NOT sent from
+        // the client (input:false); registerOrganization assigns "admin" server-side after signup.
         const name = String(fd.get("name") || "");
         const email = String(fd.get("email") || "");
         if (password !== String(fd.get("confirm") || "")) throw new Error("Passwords do not match.");
-        const su = await signUp.email({ name, email, password, accountType: "admin" });
+        const su = await signUp.email({ name, email, password });
         if (su.error) {
           // The account may already exist from a half-finished signup. Sign in (with the same
           // password) and continue - registerOrganization is idempotent, so it completes the org.

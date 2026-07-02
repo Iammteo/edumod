@@ -74,6 +74,9 @@ export async function registerOrganization(input: { schoolName: string; state: s
           address: input.address.trim() || null,
         }).returning();
         await tx.insert(memberships).values({ schoolId: s.id, userId: session.user.id, role: "school_admin", canApprovePayments: true, canReleaseResults: true });
+        // Assign accountType server-side (clients can't set it at signup: input:false). The membership
+        // role is the real authorization source; this only drives cosmetics/email routing.
+        await tx.update(users).set({ accountType: "admin", updatedAt: new Date() }).where(eq(users.id, session.user.id));
         return s;
       });
       await logAudit({ schoolId: school.id, actorUserId: session.user.id, action: "school.created", entityType: "School", entityId: school.id, metadata: { name } });
@@ -109,7 +112,8 @@ export async function inviteStaff(input: InviteStaffInput): Promise<{ ok: true; 
   // Create the auth account first (this is what enforces unique email).
   let userId: string | undefined;
   try {
-    const res = await auth.api.signUpEmail({ body: { name: input.name.trim(), email, password: `${randomUUID()}Aa1!`, accountType: "staff" } as never });
+    // accountType is not accepted at signup (input:false); it is assigned server-side in the update below.
+    const res = await auth.api.signUpEmail({ body: { name: input.name.trim(), email, password: `${randomUUID()}Aa1!` } as never });
     userId = (res as { user?: { id?: string } }).user?.id;
   } catch {
     return { error: "Could not invite this staff member - the email may already be in use." };
@@ -131,7 +135,7 @@ export async function inviteStaff(input: InviteStaffInput): Promise<{ ok: true; 
         if (!taken) { staffId = cand; usernameValue = uname; break; }
       }
       if (!usernameValue) throw new Error("staff-id-allocation-failed");
-      await tx.update(users).set({ username: usernameValue, displayUsername: staffId, updatedAt: new Date() }).where(eq(users.id, userId));
+      await tx.update(users).set({ username: usernameValue, displayUsername: staffId, accountType: "staff", updatedAt: new Date() }).where(eq(users.id, userId));
       await tx.insert(memberships).values({
         schoolId: ctx.schoolId!, userId, role: input.role,
         canApprovePayments: input.canApprovePayments,

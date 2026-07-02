@@ -269,7 +269,7 @@ function ClassTimetableTab() {
           )}
 
           <div className="border-t border-border-soft p-3">
-            <AddPeriodForm className={cls} empty={(tt?.periods.length ?? 0) === 0} onAdded={load} onErr={setErr} />
+            <AddPeriodForm className={cls} empty={(tt?.periods.length ?? 0) === 0} lastEnd={(tt?.periods ?? []).reduce((m, p) => (p.endTime > m ? p.endTime : m), "")} onAdded={load} onErr={setErr} />
           </div>
         </div>
 
@@ -403,23 +403,33 @@ function PeriodMenu({ period, onChange, onErr }: { period: TimetablePeriod; onCh
   );
 }
 
-function AddPeriodForm({ className, empty, onAdded, onErr }: { className: string; empty: boolean; onAdded: () => void; onErr: (m: string | null) => void }) {
+// Add minutes to a "HH:MM" time, capped at 23:59.
+function addMinutes(hhmm: string, mins: number) {
+  const [h, m] = hhmm.split(":").map(Number);
+  const total = Math.min(23 * 60 + 59, (h || 0) * 60 + (m || 0) + mins);
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function AddPeriodForm({ className, empty, lastEnd, onAdded, onErr }: { className: string; empty: boolean; lastEnd: string; onAdded: () => void; onErr: (m: string | null) => void }) {
   const [open, setOpen] = useState(empty);
   const [start, setStart] = useState("08:00");
   const [end, setEnd] = useState("08:40");
   const [label, setLabel] = useState("");
   const [isBreak, setIsBreak] = useState(false);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { setOpen(empty); }, [empty, className]);
+  // Default a new period to start where the last one ends, so it lands at the BOTTOM of the day.
+  const nextStart = lastEnd || "08:00";
+  useEffect(() => { setOpen(empty); if (empty) { setStart(nextStart); setEnd(addMinutes(nextStart, 40)); } }, [empty, className, nextStart]);
 
   async function add() {
     setBusy(true); onErr(null);
     const r = await addPeriod({ className, startTime: start, endTime: end, label, isBreak });
     setBusy(false);
     if ("error" in r) { onErr(r.error); return; }
-    setLabel(""); onAdded();
+    // Chain: the next period defaults to start where this one ended.
+    setStart(end); setEnd(addMinutes(end, 40)); setLabel(""); onAdded();
   }
-  function quick(asBreak: boolean) { setIsBreak(asBreak); setLabel(asBreak ? "Break" : ""); setOpen(true); }
+  function quick(asBreak: boolean) { setIsBreak(asBreak); setLabel(asBreak ? "Break" : ""); setStart(nextStart); setEnd(addMinutes(nextStart, asBreak ? 15 : 40)); setOpen(true); }
 
   if (!open) return (
     <div className="flex flex-wrap gap-2">

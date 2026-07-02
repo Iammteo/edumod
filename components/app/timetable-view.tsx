@@ -113,7 +113,7 @@ export function TimetableGrid({ className, canEdit = false }: { className: strin
       )}
 
       {edit && <>
-        <AddPeriodForm className={className} empty={empty} onAdded={load} onErr={setErr} />
+        <AddPeriodForm className={className} empty={empty} lastEnd={tt.periods.reduce((m, p) => (p.endTime > m ? p.endTime : m), "")} onAdded={load} onErr={setErr} />
         {!empty && <CopyToClasses fromClass={className} onErr={setErr} />}
         <datalist id="tt-subjects">{SUBJECTS.map((s) => <option key={s} value={s} />)}</datalist>
       </>}
@@ -233,22 +233,31 @@ function PeriodControls({ period, onChange, onErr }: { period: TimetablePeriod; 
   );
 }
 
-function AddPeriodForm({ className, empty, onAdded, onErr }: { className: string; empty: boolean; onAdded: () => void; onErr: (m: string | null) => void }) {
+function addMinutes(hhmm: string, mins: number) {
+  const [h, m] = hhmm.split(":").map(Number);
+  const total = Math.min(23 * 60 + 59, (h || 0) * 60 + (m || 0) + mins);
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function AddPeriodForm({ className, empty, lastEnd, onAdded, onErr }: { className: string; empty: boolean; lastEnd: string; onAdded: () => void; onErr: (m: string | null) => void }) {
   const [open, setOpen] = useState(empty);
   const [start, setStart] = useState("08:00");
   const [end, setEnd] = useState("08:40");
   const [label, setLabel] = useState("");
   const [isBreak, setIsBreak] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Default a new period to start where the last one ends, so it lands at the BOTTOM.
+  const nextStart = lastEnd || "08:00";
+  useEffect(() => { setOpen(empty); if (empty) { setStart(nextStart); setEnd(addMinutes(nextStart, 40)); } }, [empty, className, nextStart]);
 
   async function add() {
     setBusy(true); onErr(null);
     const r = await addPeriod({ className, startTime: start, endTime: end, label, isBreak });
     setBusy(false);
     if ("error" in r) { onErr(r.error); return; }
-    setLabel(""); onAdded();
+    setStart(end); setEnd(addMinutes(end, 40)); setLabel(""); onAdded();
   }
-  function quick(asBreak: boolean) { setIsBreak(asBreak); setLabel(asBreak ? "Break" : ""); setOpen(true); }
+  function quick(asBreak: boolean) { setIsBreak(asBreak); setLabel(asBreak ? "Break" : ""); setStart(nextStart); setEnd(addMinutes(nextStart, asBreak ? 15 : 40)); setOpen(true); }
 
   if (!open) return (
     <div className="flex flex-wrap gap-2">
