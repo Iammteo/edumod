@@ -73,7 +73,12 @@ export const auth = betterAuth({
     },
   },
   emailVerification: {
-    sendOnSignUp: true,
+    // Not auto-sent on signup: admins verify with the emailOTP flow (see auth-screen), and staff verify
+    // via acceptInvite (which sets emailVerified). Since accountType is now forced to its default at
+    // signup (input:false), the hook below can no longer detect staff at signup, so relying on a
+    // sign-up email would send staff a redundant message. Verification emails are only sent when a flow
+    // explicitly requests one.
+    sendOnSignUp: false,
     autoSignInAfterVerification: true,
     sendVerificationEmail: async ({ user, url }) => {
       // Staff are invited with their own onboarding email (which sets their password and verifies them
@@ -88,8 +93,11 @@ export const auth = betterAuth({
   },
   user: {
     additionalFields: {
-      // Drives which dashboard a user lands on: "admin" | "staff" | "student".
-      accountType: { type: "string", required: false, defaultValue: "student", input: true },
+      // A hint for cosmetics/emails only; NEVER an authorization source (the dashboard and every server
+      // action key off memberships.role). input:false so a client cannot set it at signup; it is assigned
+      // server-side after signup (registerOrganization sets "admin", inviteStaff sets "staff", createStudent
+      // inserts "student"). With a defaultValue, better-auth silently forces this default on create.
+      accountType: { type: "string", required: false, defaultValue: "student", input: false },
     },
   },
   socialProviders,

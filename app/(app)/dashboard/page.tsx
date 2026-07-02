@@ -34,17 +34,25 @@ export default async function DashboardPage() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) redirect("/login");
 
-  const role = (session.user as { accountType?: string }).accountType ?? "student";
   const name = session.user.name || session.user.email || "there";
 
   const [membership] = await db.select().from(memberships).where(eq(memberships.userId, session.user.id)).limit(1);
   const school = membership ? (await db.select().from(schools).where(eq(schools.id, membership.schoolId)).limit(1))[0] : undefined;
+
+  // Choose the dashboard view from the server-owned membership role, never the client-settable
+  // accountType. school_admin: admin view; secretary: restricted admin view; principal, vice_principal,
+  // teacher: staff dashboard; students, parents and any account without a membership: student view.
+  const mRole = membership?.role;
+  const view = mRole === "school_admin" || mRole === "secretary" ? "admin"
+    : mRole === "principal" || mRole === "vice_principal" || mRole === "teacher" ? "staff"
+    : "student";
+
   const schoolName = school?.name ?? "Your school";
   const termLabel = `${school?.currentSession ?? "2023/2024"} · ${school?.currentTerm ?? "Term 2"}`;
   const schoolCode = school?.schoolCode ?? "-";
 
   // The secretary uses the admin interface in a restricted mode (no settings/staff/finance approval).
-  if (role === "admin" || membership?.role === "secretary") {
+  if (view === "admin") {
     const sid = membership?.schoolId;
     const [studentRows, staffRows, auditRows, overview] = sid
       ? await Promise.all([
@@ -62,11 +70,11 @@ export default async function DashboardPage() {
         staff={staffRows.map((s) => ({ userId: s.userId, name: s.name, email: s.email, staffNo: s.staffNo ?? null, role: s.role, teacherType: s.isClassTeacher ? "Class teacher" : s.isTeacher ? "Subject teacher" : (roleLabel(s.role)), subjects: (s.subjects as string[]) ?? [], assignedClass: s.assignedClass ?? null, status: s.status ?? "active", canApprove: !!s.canApprove, permissions: (s.permissions as Record<string, string>) ?? {} }))}
         audit={auditRows.map((a) => ({ action: a.action, entityType: a.entityType, entityId: a.entityId, actor: a.actorName ?? "system", actorRole: a.actorRole ? (roleLabel(a.actorRole)) : null, ts: new Date(a.createdAt).getTime(), detail: describeAudit(a.action, a.metadata as Record<string, unknown>), meta: a.metadata as Record<string, unknown> }))}
         overview={overview as Awaited<ReturnType<typeof adminOverview>>}
-        restricted={role !== "admin"}
+        restricted={mRole !== "school_admin"}
       />
     );
   }
-  if (role === "staff") {
+  if (view === "staff") {
     const [sp] = membership ? await db.select().from(staffProfiles).where(eq(staffProfiles.userId, session.user.id)).limit(1) : [];
     const roster = sp?.assignedClass && membership
       ? await db.select({ id: studentsTable.id, firstName: studentsTable.firstName, lastName: studentsTable.lastName, admissionNo: studentsTable.admissionNo }).from(studentsTable).where(and(eq(studentsTable.schoolId, membership.schoolId), eq(studentsTable.className, sp.assignedClass))).orderBy(studentsTable.firstName).limit(100)
