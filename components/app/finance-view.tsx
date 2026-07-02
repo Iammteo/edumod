@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getFinanceData, recordPayment, approvePayment, returnPayment, declinePayment, createFeeStructure, getInvoiceReport, getReceiptReport, sendInvoiceReminder, type FinanceData, type Payment, type Student, type InvoiceReportRow } from "@/lib/actions/finance";
 import { formatNaira as naira, compactNaira } from "@/lib/format";
+import { useAcademicTerms } from "./use-terms";
 import type { ReceiptReportRow } from "@/lib/receipt";
 import { getOverpayments, carryForwardCredit, requestRefund, decideRefund, type OverpaymentRow, type RefundRow } from "@/lib/actions/refunds";
 import { StudentLink } from "./student-nav";
@@ -209,7 +210,6 @@ function RecordPaymentScreen({ data, onDone, onErr }: { data: FinanceData; onDon
 const initials = (s: string) => s.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("") || "?";
 const AV = ["#2159e8", "#178a4c", "#b9540f", "#6b2fb3", "#0f8a8a", "#c0392b"];
 const FEE_TYPES = ["Tuition", "Practical", "Lesson money", "Transport", "PTA"];
-const TERMS = ["2023/2024 · Term 1", "2023/2024 · Term 2", "2023/2024 · Term 3", "2024/2025 · Term 1"];
 
 // ---------------------------------------------------------------------------- Approvals
 const APPROVAL_TABS: [string, string][] = [["pending_approval", "Pending"], ["approved", "Approved"], ["returned", "Returned"], ["rejected", "Declined"]];
@@ -333,9 +333,11 @@ const LEVELS = ["Primary", "JSS", "SSS"];
 const classLevel = (c: string, lv: string) => lv === "Primary" ? /primary|pry|basic/i.test(c) : lv === "JSS" ? /jss|j\.?s\.?s/i.test(c) : /sss|s\.?s\.?s/i.test(c);
 
 function IssueFeesCard({ data, onDone, onErr }: { data: FinanceData; onDone: (n: number) => void; onErr: (e: string) => void }) {
+  const { terms: termOptions, current: currentTerm } = useAcademicTerms();
   const [tab, setTab] = useState<"issue" | "structures">("issue");
   const [billName, setBillName] = useState("");
-  const [term, setTerm] = useState(TERMS[1]);
+  const [term, setTerm] = useState("");
+  useEffect(() => { if (currentTerm) setTerm((t) => t || currentTerm); }, [currentTerm]);
   const [dueDate, setDueDate] = useState("");
   const [items, setItems] = useState<ItemDraft[]>([{ name: "Tuition", amount: "", mandatory: true }]);
   const [mode, setMode] = useState<"all" | "selected" | "level">("all");
@@ -398,7 +400,7 @@ function IssueFeesCard({ data, onDone, onErr }: { data: FinanceData; onDone: (n:
           <form onSubmit={submit} className="rounded-2xl border border-border-soft bg-white p-5">
             <h2 className="mb-4 font-display text-[16px] font-semibold">Create a new bill</h2>
             <div className="grid gap-3.5 sm:grid-cols-3">
-              <Field label="Term"><select value={term} onChange={(e) => setTerm(e.target.value)} className={selectCls}>{TERMS.map((t) => <option key={t}>{t}</option>)}</select></Field>
+              <Field label="Term"><select value={term} onChange={(e) => setTerm(e.target.value)} className={selectCls}>{[...new Set([term, ...termOptions].filter(Boolean))].map((t) => <option key={t}>{t}</option>)}</select></Field>
               <Field label="Bill name"><input value={billName} onChange={(e) => setBillName(e.target.value)} placeholder="e.g. Term 2 - School Fees" className={inputCls} /></Field>
               <Field label="Due date"><input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={inputCls} /></Field>
             </div>

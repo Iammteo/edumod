@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { saveStudentResult, deleteStudentResult, type TermResult } from "@/lib/actions/students";
+import { SUBJECTS } from "@/lib/subjects";
+import { useAcademicTerms } from "./use-terms";
 
-const SUBJECTS = ["Mathematics", "English Language", "Basic Science", "Basic Technology", "Social Studies", "Civic Education", "Agricultural Science", "Business Studies", "Computer Studies / ICT", "Christian Religious Studies", "Islamic Religious Studies", "Physical & Health Education", "Home Economics", "Cultural & Creative Arts", "French", "Physics", "Chemistry", "Biology", "Economics", "Government", "Literature-in-English", "Geography", "Further Mathematics", "Financial Accounting", "Commerce", "Yoruba", "Hausa", "Igbo"];
-const TERMS = ["2023/2024 · Term 1", "2023/2024 · Term 2", "2023/2024 · Term 3", "2024/2025 · Term 1"];
 const gradeTone = (g: string) => (g === "A" ? "text-brand-green" : g === "F" ? "text-danger" : g === "D" || g === "E" ? "text-warn" : "text-brand-blue");
 function ord(n: number) { const s = ["th", "st", "nd", "rd"], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
 const inputCls = "min-h-9 w-full rounded-[9px] border border-border-soft bg-paper/60 px-2.5 text-[12px] text-ink outline-none transition focus:border-brand-blue focus:bg-white";
@@ -45,7 +45,9 @@ function TermSheet({ t, canManage, studentId, onChanged }: { t: TermResult; canM
 
 function F({ label, children }: { label: string; children: React.ReactNode }) { return <label className="grid gap-1"><span className="text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">{label}</span>{children}</label>; }
 function ResultForm({ studentId, onSaved, onErr }: { studentId: string; onSaved: () => void; onErr: (e: string | null) => void }) {
-  const [term, setTerm] = useState(TERMS[1]);
+  const { terms, current } = useAcademicTerms();
+  const [term, setTerm] = useState("");
+  useEffect(() => { if (current) setTerm((t) => t || current); }, [current]);
   const [subject, setSubject] = useState("");
   const [ca, setCa] = useState("");
   const [exam, setExam] = useState("");
@@ -60,7 +62,7 @@ function ResultForm({ studentId, onSaved, onErr }: { studentId: string; onSaved:
   }
   return (
     <form onSubmit={save} className="grid gap-3 rounded-2xl border border-border-soft bg-white p-4 sm:grid-cols-[1.2fr_1.6fr_.7fr_.7fr_auto] sm:items-end">
-      <F label="Term"><select value={term} onChange={(e) => setTerm(e.target.value)} className={inputCls}>{TERMS.map((t) => <option key={t}>{t}</option>)}</select></F>
+      <F label="Term"><select value={term} onChange={(e) => setTerm(e.target.value)} className={inputCls}>{terms.length === 0 && <option value="">No terms yet</option>}{terms.map((t) => <option key={t}>{t}</option>)}</select></F>
       <F label="Subject"><input list="subject-list" value={subject} onChange={(e) => setSubject(e.target.value)} required className={inputCls} placeholder="Mathematics" /><datalist id="subject-list">{SUBJECTS.map((s) => <option key={s} value={s} />)}</datalist></F>
       <F label="CA /40"><input type="number" min="0" max="40" value={ca} onChange={(e) => setCa(e.target.value)} required className={inputCls} /></F>
       <F label="Exam /60"><input type="number" min="0" max="60" value={exam} onChange={(e) => setExam(e.target.value)} required className={inputCls} /></F>

@@ -1,10 +1,19 @@
 import Redis from "ioredis";
 
+// Redis is REQUIRED in production: it backs the login/PIN lockout, auth rate limiting and one-time QR
+// tokens. Without it these fail OPEN (no brute-force protection), so refuse to run a prod server that
+// lacks it. The NEXT_PHASE guard avoids tripping `next build` (which sets NODE_ENV=production); this
+// throws only at runtime, and a transient Redis outage still fails open below (availability > lockout).
+if (process.env.NODE_ENV === "production" && process.env.NEXT_PHASE !== "phase-production-build" && !process.env.REDIS_URL) {
+  throw new Error("REDIS_URL is required in production — it backs login lockout, rate limiting and one-time QR clock-in tokens. Set REDIS_URL before deploying.");
+}
+
 // Per-account + per-IP login lockout. Student IDs are enumerable (school code + sequential ID),
 // so the password is the only secret - this caps brute-force attempts. Backed by Redis; if Redis
 // is unavailable it fails OPEN (never blocks a legitimate login) and just logs.
-const MAX_ATTEMPTS = 5; // failures allowed within the window
-const WINDOW_SECONDS = 15 * 60; // 15-minute rolling lockout
+export const MAX_ATTEMPTS = 5; // failures allowed within the window
+export const LOCKOUT_MINUTES = 5; // how long the lockout lasts
+const WINDOW_SECONDS = LOCKOUT_MINUTES * 60;
 
 const globalForRedis = globalThis as unknown as { rateLimitRedis?: Redis | null };
 

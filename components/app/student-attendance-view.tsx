@@ -254,7 +254,18 @@ export function StudentAttendanceView({ embedded }: { embedded?: boolean }) {
                   </div>
                   {filtered.length === 0 ? <div className="grid place-items-center rounded-xl border border-dashed border-border-soft py-10 text-center text-[12px] text-ink-soft">{data!.rows.length === 0 ? `No students in ${picked} yet.` : "No students match your search."}</div>
                     : <>
-                      <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-left text-[12px]">
+                      {/* Mobile: stacked cards so the status buttons are always reachable (no sideways scroll). */}
+                      <div className="grid gap-2 md:hidden">{slice.map((r) => (
+                        <div key={r.id} className="rounded-xl border border-border-soft p-3">
+                          <div className="flex items-center gap-2.5">
+                            <Avatar name={r.name} size={32} />
+                            <div className="min-w-0 flex-1"><div className="truncate font-bold text-ink">{r.name}</div><div className="truncate text-[10px] text-ink-soft">{r.admissionNo}{r.guardianPhone ? ` · ${r.guardianPhone}` : ""}</div></div>
+                          </div>
+                          <div className="mt-2.5 grid grid-cols-4 gap-1.5">{STATUS_BTN.map((s) => { const active = r.status === s.key; return <button key={s.key} disabled={!data!.canMark} onClick={() => mark(r.id, s.key)} className={`flex flex-col items-center gap-0.5 rounded-lg border px-1 py-1.5 text-[10px] font-extrabold transition disabled:cursor-default ${active ? s.on : "border-border-soft text-ink-soft active:bg-paper disabled:active:bg-transparent"}`}>{Icon(s.icon)}<span>{s.label}</span></button>; })}</div>
+                        </div>
+                      ))}</div>
+                      {/* Desktop: table */}
+                      <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[640px] text-left text-[12px]">
                         <thead><tr className="border-b border-border-soft text-[10px] uppercase tracking-wide text-ink-soft"><th className="py-2 font-bold">Student</th><th className="py-2 font-bold">Admission No.</th><th className="py-2 font-bold">Guardian</th><th className="py-2 text-right font-bold">Status</th></tr></thead>
                         <tbody>{slice.map((r) => (
                           <tr key={r.id} className="border-b border-border-soft last:border-0">

@@ -70,7 +70,9 @@ export async function userHasAnyDevice(userId: string): Promise<boolean> {
 // auto-trusts the staffer's very first device (enroll-on-first-use).
 export async function evaluateStaffDevice(userId: string, deviceId: string): Promise<{ allow: boolean; message?: string }> {
   const [m] = await db.select({ role: memberships.role, schoolId: memberships.schoolId }).from(memberships).where(eq(memberships.userId, userId)).limit(1);
-  if (!m || m.role === "school_admin") return { allow: true };
+  // Device trust is a STAFF control (anti-buddy-punching). Admins sign in anywhere; students/parents
+  // aren't gated — they'd log in from many devices and shouldn't need admin approval each time.
+  if (!m || m.role === "school_admin" || m.role === "student" || m.role === "parent") return { allow: true };
   const status = await deviceStatus(userId, deviceId);
   if (status === "approved") { await touchDevice(userId, deviceId); return { allow: true }; }
   if (status === "pending") return { allow: false, message: "This device is waiting for admin approval. You can sign in once it's approved." };

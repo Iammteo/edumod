@@ -38,6 +38,49 @@ function csvBlock(cols: ReportColumn[], rows: ReportRow[]) {
     .map((line) => line.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
 }
 
+// Opens a print window and triggers the browser's print dialog (→ "Save as PDF").
+function printWindow(html: string) {
+  const w = window.open("", "_blank");
+  if (!w) return;
+  const script = `<script>window.addEventListener('load',function(){setTimeout(function(){window.focus();window.print();},250);});<\/script>`;
+  w.document.write(html + script);
+  w.document.close();
+}
+
+/* ---------------- Timetable grid export (PDF / Word) ---------------- */
+export type ExportSlot = { subject: string | null; teacher?: string | null; room?: string | null } | null;
+export type ExportPeriod = { startTime: string; endTime: string; label: string | null; isBreak: boolean; slots: ExportSlot[] };
+
+function timetableDoc(opts: { title: string; subtitle: string; days: string[]; periods: ExportPeriod[] }) {
+  const { title, subtitle, days, periods } = opts;
+  const th = 'style="border:1px solid #bcc6d8;padding:7px 9px;background:#eef2f9;font-size:12px;text-align:center"';
+  const timeTh = 'style="border:1px solid #bcc6d8;padding:7px 9px;background:#eef2f9;font-size:11px;text-align:left"';
+  const head = `<tr><th ${timeTh}>Time</th>${days.map((d) => `<th ${th}>${esc(d)}</th>`).join("")}</tr>`;
+  const body = periods.map((p) => {
+    const time = `<td style="border:1px solid #bcc6d8;padding:6px 9px;font-size:11px;color:#5b6b86;white-space:nowrap">${esc(p.startTime)}–${esc(p.endTime)}</td>`;
+    if (p.isBreak) return `<tr>${time}<td colspan="${days.length}" style="border:1px solid #bcc6d8;padding:7px;text-align:center;font-weight:bold;background:#fdf6e9;color:#b9540f;text-transform:uppercase;font-size:12px">${esc(p.label || "Break")}</td></tr>`;
+    const cells = days.map((_d, i) => {
+      const s = p.slots[i];
+      if (!s || (!s.subject && !s.teacher && !s.room)) return `<td style="border:1px solid #dbe2ee;padding:6px 8px"></td>`;
+      const sub = s.subject ? `<strong style="font-size:12px;color:#10213f">${esc(s.subject)}</strong>` : "";
+      const tea = s.teacher ? `<br><span style="font-size:10.5px;color:#5b6b86">${esc(s.teacher)}</span>` : "";
+      const room = s.room ? `<br><span style="font-size:10.5px;color:#5b6b86">${esc(s.room)}</span>` : "";
+      return `<td style="border:1px solid #dbe2ee;padding:6px 8px;vertical-align:top">${sub}${tea}${room}</td>`;
+    }).join("");
+    return `<tr>${time}${cells}</tr>`;
+  }).join("");
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title></head><body style="font-family:Arial,Helvetica,sans-serif;color:#10213f;margin:24px">
+    <h2 style="margin:0">${esc(title)}</h2><p style="color:#5b6b86;margin:4px 0 14px">${esc(subtitle)}</p>
+    <table style="border-collapse:collapse;width:100%"><thead>${head}</thead><tbody>${body}</tbody></table>
+  </body></html>`;
+}
+
+export function exportTimetable(format: "pdf" | "word", opts: { title: string; subtitle: string; days: string[]; periods: ExportPeriod[]; filename: string }) {
+  const html = timetableDoc(opts);
+  if (format === "word") { download(new Blob([`﻿${html}`], { type: "application/msword" }), `${opts.filename}.doc`); return; }
+  printWindow(html);
+}
+
 export function exportReport(format: "excel" | "word" | "pdf" | "csv", opts: { title: string; subtitle: string; columns: ReportColumn[]; rows: ReportRow[]; filename: string; summary?: ReportSection }) {
   const { title, subtitle, columns, rows, filename, summary } = opts;
   if (format === "csv") {

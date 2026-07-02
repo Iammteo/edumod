@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Logo } from "@/components/marketing/brand";
 import { authClient, signIn, signUp, twoFactor, type AccountType } from "@/lib/auth/client";
-import { registerOrganization, studentLogin, staffLogin } from "@/lib/actions/people";
+import { registerOrganization, studentLogin, staffLogin, deviceApprovalStatus } from "@/lib/actions/people";
 
 const ROLES: { key: AccountType; label: string; icon: React.ReactNode }[] = [
   { key: "student", label: "Student", icon: <><path d="M22 10 12 5 2 10l10 5 10-5Z" /><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5" /></> },
@@ -50,9 +50,45 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
   const [sending, setSending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Signup gains an email-OTP verification step; login gains a 2FA challenge step for enrolled users.
-  const [step, setStep] = useState<"form" | "otp" | "twofa">("form");
+  const [step, setStep] = useState<"form" | "otp" | "twofa" | "device-wait">("form");
   const [code, setCode] = useState("");
   const [pending, setPending] = useState<{ email: string; schoolName: string; state: string; country: string; address: string } | null>(null);
+  // Waiting-for-device-approval state: keep the entered credentials so we can finish the login
+  // automatically the moment an admin approves this device.
+  const [wait, setWait] = useState<{ mode: "staffid" | "email"; identifier: string; password: string; message: string } | null>(null);
+
+  function startWait(mode: "staffid" | "email", identifier: string, password: string, message: string) {
+    setWait({ mode, identifier, password, message });
+    setError(null); setSending(null); setStep("device-wait");
+  }
+
+  // While waiting, poll for approval; once approved, finish the sign-in with the stored credentials.
+  useEffect(() => {
+    if (step !== "device-wait" || !wait) return;
+    let live = true;
+    async function attempt() {
+      const s = await deviceApprovalStatus(wait!.identifier);
+      if (!live || s.status !== "approved") return;
+      try {
+        if (wait!.mode === "staffid") {
+          const r = await staffLogin({ staffId: wait!.identifier, password: wait!.password });
+          if (!live) return;
+          if ("ok" in r) { router.push("/dashboard"); return; }
+          if ("pending" in r) return; // race: not fully ready, keep polling
+          setError(r.error); setWait(null); setStep("form");
+        } else {
+          const res = await signIn.email({ email: wait!.identifier, password: wait!.password, rememberMe: false });
+          if (!live) return;
+          if (res.error) { if (/approv/i.test(res.error.message || "")) return; setError(res.error.message || "Invalid credentials"); setWait(null); setStep("form"); return; }
+          if ((res.data as { twoFactorRedirect?: boolean } | null)?.twoFactorRedirect) { setWait(null); setStep("twofa"); return; }
+          router.push("/dashboard");
+        }
+      } catch { /* transient — keep polling */ }
+    }
+    attempt();
+    const t = setInterval(() => { if (!document.hidden) attempt(); }, 5000);
+    return () => { live = false; clearInterval(t); };
+  }, [step, wait, router]);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -92,12 +128,17 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
         const identifier = String(fd.get("identifier") || "").trim();
         if (identifier && !identifier.includes("@")) {
           const r = await staffLogin({ staffId: identifier, password });
+          if ("pending" in r) { startWait("staffid", identifier, password, r.message); return; }
           if ("error" in r) throw new Error(r.error);
           router.push("/dashboard");
           return;
         }
         const res = await signIn.email({ email: identifier, password, rememberMe: false });
-        if (res.error) throw new Error(res.error.message || "Invalid credentials");
+        if (res.error) {
+          const m = res.error.message || "Invalid credentials";
+          if (/approv/i.test(m)) { startWait("email", identifier, password, m); return; }
+          throw new Error(m);
+        }
         if ((res.data as { twoFactorRedirect?: boolean } | null)?.twoFactorRedirect) { setStep("twofa"); setSending(null); return; }
         router.push("/dashboard");
         return;
@@ -197,7 +238,25 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
         <Link href="/" className="absolute left-5 top-5 text-[12px] font-bold text-ink-soft transition hover:text-brand-blue sm:left-8 sm:top-8"><span aria-hidden>←</span> Back to home</Link>
         <div className="w-full max-w-[404px] motion-safe:animate-[fade-up_.6s_ease]">
           <div className="mb-7 lg:hidden"><Logo /></div>
-          {isLogin && step === "twofa" ? (
+          {isLogin && step === "device-wait" ? (
+            <div>
+              <h1 className="font-display text-[30px] font-extrabold tracking-[-.03em]">Waiting for approval</h1>
+              <p className="mt-1.5 text-[14px] leading-relaxed text-ink-soft">You&rsquo;re signing in from a device your school hasn&rsquo;t approved yet.</p>
+              <div className="mt-6 grid place-items-center gap-4 rounded-2xl border border-border-soft bg-paper/50 py-8 px-5">
+                <span className="relative grid size-14 place-items-center">
+                  <span className="absolute inset-0 animate-spin rounded-full border-2 border-brand-blue/15 border-t-brand-blue" />
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="size-6 text-brand-blue"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+                </span>
+                <div className="text-center">
+                  <p className="text-[13px] font-bold text-ink">We&rsquo;ve alerted your school admin</p>
+                  <p className="mt-1 text-[12px] leading-relaxed text-ink-soft">This page continues automatically the moment they approve this device — you won&rsquo;t need to sign in again.</p>
+                </div>
+              </div>
+              {error && <div className="mt-4 rounded-[12px] border border-danger-line bg-danger-soft px-3.5 py-2.5 text-[12px] font-bold text-danger">{error}</div>}
+              <p className="mt-4 text-center text-[12px] text-ink-soft">This waits on a person, so it may take a little while. You can leave this page and come back — you&rsquo;ll be let in once approved.</p>
+              <button type="button" onClick={() => { setStep("form"); setWait(null); setError(null); }} className="mt-4 text-[12px] font-bold text-ink-soft transition hover:text-brand-blue"><span aria-hidden>←</span> Cancel</button>
+            </div>
+          ) : isLogin && step === "twofa" ? (
             <div>
               <h1 className="font-display text-[30px] font-extrabold tracking-[-.03em]">Two-factor verification</h1>
               <p className="mt-1.5 text-[14px] leading-relaxed text-ink-soft">Enter the 6-digit code from your authenticator app to finish signing in.</p>

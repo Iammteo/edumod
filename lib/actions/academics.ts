@@ -9,7 +9,13 @@ import { logAudit } from "@/lib/audit";
 async function ctx() {
   const a = await getAuthContext();
   if (!a) return null;
-  return { userId: a.userId, schoolId: a.schoolId, isAdmin: ["school_admin", "principal", "vice_principal", "secretary"].includes(a.role) };
+  // Only the school admin CREATES/REMOVES terms. Leadership + the secretary may SWITCH the active
+  // term among existing ones. Everyone else just reads (listAcademicTerms is open to any member).
+  return {
+    userId: a.userId, schoolId: a.schoolId,
+    isAdmin: a.role === "school_admin",
+    canSwitch: ["school_admin", "principal", "vice_principal", "secretary"].includes(a.role),
+  };
 }
 
 export type SessionTerm = { session: string; term: string; current: boolean };
@@ -60,15 +66,22 @@ export async function deleteAcademicTerm(input: { session: string; term: string 
   }
 }
 
-// Switch the school's active period. Ensures the pair exists, then updates the display fields.
+// Switch the school's active period. Leadership + secretary may switch, but only the admin may create
+// a new pair on the way (everyone else must pick an existing one).
 export async function setCurrentPeriod(input: { session: string; term: string }): Promise<{ ok: true } | { error: string }> {
   const c = await ctx();
-  if (!c?.isAdmin) return { error: "Only an admin can switch the term." };
+  if (!c?.canSwitch) return { error: "You don't have permission to switch the term." };
   const session = input.session.trim().replace(/\s+/g, " ");
   const term = input.term.trim().replace(/\s+/g, " ");
   if (!session || !term) return { error: "Pick a session and term." };
   try {
-    await db.insert(academicTerms).values({ schoolId: c.schoolId, session, term }).onConflictDoNothing();
+    if (c.isAdmin) {
+      await db.insert(academicTerms).values({ schoolId: c.schoolId, session, term }).onConflictDoNothing();
+    } else {
+      const [exists] = await db.select({ id: academicTerms.id }).from(academicTerms)
+        .where(and(eq(academicTerms.schoolId, c.schoolId), eq(academicTerms.session, session), eq(academicTerms.term, term))).limit(1);
+      if (!exists) return { error: "That term hasn't been created yet - ask an admin to add it." };
+    }
     await db.update(schools).set({ currentSession: session, currentTerm: term, updatedAt: new Date() }).where(eq(schools.id, c.schoolId));
     await logAudit({ schoolId: c.schoolId, actorUserId: c.userId, action: "academics.switched", entityType: "Academics", metadata: { session, term } });
     return { ok: true };

@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getMyAttendance, handleQrClockIn, setClockInPin, type MyAttendance } from "@/lib/actions/attendance";
-import { saveStudentResult } from "@/lib/actions/students";
+import { saveClassResults, getClassResults } from "@/lib/actions/students";
 import { Button } from "./ui";
 import { QrScanModal } from "./qr-scanner";
+import { SUBJECTS } from "@/lib/subjects";
+import { useAcademicTerms } from "./use-terms";
 
 const METHOD: Record<string, string> = { qr_scan: "QR", kiosk_pin: "PIN", admin_override: "Override", self_portal: "Portal" };
-const SUBJECTS = ["Mathematics", "English Language", "Basic Science", "Basic Technology", "Social Studies", "Civic Education", "Agricultural Science", "Computer Studies / ICT", "Physics", "Chemistry", "Biology", "Economics", "Government", "Literature-in-English", "Geography", "Further Mathematics"];
-const TERMS = ["2023/2024 · Term 1", "2023/2024 · Term 2", "2023/2024 · Term 3", "2024/2025 · Term 1"];
 const inputCls = "min-h-9 w-full rounded-[9px] border border-border-soft bg-paper/60 px-2.5 text-[12px] text-ink outline-none focus:border-brand-blue focus:bg-white";
 
 /* ---------- My attendance (clock in/out, status, history, PIN) ---------- */
@@ -80,40 +80,86 @@ function PinSetup({ mySet, onDone }: { mySet: boolean; onDone: () => void }) {
 }
 
 /* ---------- Record results for my class ---------- */
-export function RecordResults({ classStudents }: { classStudents: { id: string; name: string; admissionNo: string }[] }) {
-  const [studentId, setStudentId] = useState("");
-  const [term, setTerm] = useState(TERMS[1]);
+// Pick a term + subject, then enter CA/exam for the WHOLE class in one grid and save at once.
+export function RecordResults({ classStudents, subjects = [] }: { classStudents: { id: string; name: string; admissionNo: string }[]; subjects?: string[] }) {
+  const { terms, current } = useAcademicTerms();
+  const [term, setTerm] = useState("");
   const [subject, setSubject] = useState("");
-  const [ca, setCa] = useState(""); const [exam, setExam] = useState("");
+  const [scores, setScores] = useState<Record<string, { ca: string; exam: string }>>({});
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<{ ok?: string; err?: string } | null>(null);
 
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    if (!studentId) { setMsg({ err: "Pick a student." }); return; }
+  // Default to the school's current term once the real terms load.
+  useEffect(() => { if (current) setTerm((t) => t || current); }, [current]);
+
+  const subjectOptions = [...new Set([...subjects, ...SUBJECTS])];
+  const subj = subject.trim();
+  const idsKey = classStudents.map((s) => s.id).join(",");
+
+  // Prefill from any existing scores whenever the term or subject changes.
+  useEffect(() => {
+    if (!subj || classStudents.length === 0) { setScores({}); return; }
+    let live = true;
+    setLoading(true); setMsg(null);
+    getClassResults({ studentIds: classStudents.map((s) => s.id), term, subject: subj }).then((map) => {
+      if (!live) return;
+      const next: Record<string, { ca: string; exam: string }> = {};
+      for (const s of classStudents) { const e = map[s.id]; next[s.id] = { ca: e ? String(e.ca) : "", exam: e ? String(e.exam) : "" }; }
+      setScores(next); setLoading(false);
+    });
+    return () => { live = false; };
+  }, [term, subj, idsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function setScore(id: string, field: "ca" | "exam", val: string) {
+    const digits = val.replace(/[^0-9]/g, "").slice(0, 3);
+    const max = field === "ca" ? 40 : 60;
+    const clamped = digits === "" ? "" : String(Math.min(Number(digits), max));
+    setScores((p) => ({ ...p, [id]: { ...(p[id] ?? { ca: "", exam: "" }), [field]: clamped } }));
+  }
+
+  async function saveAll() {
+    if (!subj) { setMsg({ err: "Enter a subject." }); return; }
+    const entries = classStudents.map((s) => ({ studentId: s.id, ca: Number(scores[s.id]?.ca || 0), exam: Number(scores[s.id]?.exam || 0) }));
     setBusy(true); setMsg(null);
-    const r = await saveStudentResult({ studentId, term, subject, ca: Number(ca || 0), exam: Number(exam || 0) });
+    const r = await saveClassResults({ term, subject: subj, entries });
     setBusy(false);
     if ("error" in r) { setMsg({ err: r.error }); return; }
-    setMsg({ ok: "Saved ✓" }); setSubject(""); setCa(""); setExam("");
+    setMsg({ ok: `Saved ${r.count} result${r.count === 1 ? "" : "s"} ✓` });
   }
 
   if (classStudents.length === 0) return <p className="text-[12px] text-ink-soft">No students in your class yet - ask your admin to assign them.</p>;
   return (
-    <form onSubmit={save} className="grid gap-2.5">
-      <datalist id="subj">{SUBJECTS.map((s) => <option key={s} value={s} />)}</datalist>
+    <div className="grid gap-3">
+      <datalist id="subj">{subjectOptions.map((s) => <option key={s} value={s} />)}</datalist>
       <div className="grid gap-2.5 sm:grid-cols-2">
-        <label className="grid gap-1"><span className="text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">Student</span><select value={studentId} onChange={(e) => setStudentId(e.target.value)} className={inputCls}><option value="">Select…</option>{classStudents.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.admissionNo})</option>)}</select></label>
-        <label className="grid gap-1"><span className="text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">Term</span><select value={term} onChange={(e) => setTerm(e.target.value)} className={inputCls}>{TERMS.map((t) => <option key={t}>{t}</option>)}</select></label>
+        <label className="grid gap-1"><span className="text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">Term</span><select value={term} onChange={(e) => setTerm(e.target.value)} className={inputCls}>{terms.length === 0 && <option value="">No terms yet</option>}{terms.map((t) => <option key={t}>{t}</option>)}</select></label>
+        <label className="grid gap-1"><span className="text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">Subject</span><input list="subj" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Mathematics" className={inputCls} /></label>
       </div>
-      <div className="grid gap-2.5 sm:grid-cols-[1.6fr_.7fr_.7fr_auto] sm:items-end">
-        <label className="grid gap-1"><span className="text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">Subject</span><input list="subj" value={subject} onChange={(e) => setSubject(e.target.value)} required placeholder="Mathematics" className={inputCls} /></label>
-        <label className="grid gap-1"><span className="text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">CA /40</span><input type="number" min="0" max="40" value={ca} onChange={(e) => setCa(e.target.value)} required className={inputCls} /></label>
-        <label className="grid gap-1"><span className="text-[10px] font-extrabold uppercase tracking-wide text-ink-soft">Exam /60</span><input type="number" min="0" max="60" value={exam} onChange={(e) => setExam(e.target.value)} required className={inputCls} /></label>
-        <Button type="submit" variant="primary" size="sm" disabled={busy}>{busy ? "…" : "Save"}</Button>
-      </div>
+
+      {!subj ? <p className="text-[12px] text-ink-soft">Choose a subject to enter scores for the whole class at once.</p> : (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[11px] font-extrabold text-ink-soft">{classStudents.length} student{classStudents.length === 1 ? "" : "s"} · <span className="text-ink">{subj}</span> · {term}{loading ? " · loading…" : ""}</span>
+            <Button size="sm" onClick={saveAll} disabled={busy || loading}>{busy ? "Saving…" : "Save all"}</Button>
+          </div>
+          <div className="overflow-x-auto rounded-xl border border-border-soft">
+            <table className="w-full min-w-[440px] text-left text-[12px]">
+              <thead><tr className="border-b border-border-soft bg-paper/60 text-[10px] uppercase tracking-wide text-ink-soft"><th className="px-3 py-2 font-bold">Student</th><th className="w-24 px-2 py-2 font-bold">CA /40</th><th className="w-24 px-2 py-2 font-bold">Exam /60</th><th className="w-16 px-3 py-2 text-center font-bold">Total</th></tr></thead>
+              <tbody>{classStudents.map((s) => { const sc = scores[s.id] ?? { ca: "", exam: "" }; const total = (Number(sc.ca) || 0) + (Number(sc.exam) || 0); return (
+                <tr key={s.id} className="border-b border-border-soft last:border-0">
+                  <td className="px-3 py-1.5"><span className="font-bold text-ink">{s.name}</span> <code className="ml-1 rounded bg-brand-soft px-1 text-[10px] font-bold text-brand-blue">{s.admissionNo}</code></td>
+                  <td className="px-2 py-1.5"><input inputMode="numeric" value={sc.ca} onChange={(e) => setScore(s.id, "ca", e.target.value)} className="min-h-8 w-16 rounded-lg border border-border-soft bg-paper/60 px-2 text-center outline-none focus:border-brand-blue focus:bg-white" /></td>
+                  <td className="px-2 py-1.5"><input inputMode="numeric" value={sc.exam} onChange={(e) => setScore(s.id, "exam", e.target.value)} className="min-h-8 w-16 rounded-lg border border-border-soft bg-paper/60 px-2 text-center outline-none focus:border-brand-blue focus:bg-white" /></td>
+                  <td className="px-3 py-1.5 text-center font-extrabold text-ink">{total || "-"}</td>
+                </tr>); })}</tbody>
+            </table>
+          </div>
+          <div className="flex justify-end"><Button size="sm" onClick={saveAll} disabled={busy || loading}>{busy ? "Saving…" : "Save all"}</Button></div>
+        </>
+      )}
       {msg?.ok && <p className="text-[12px] font-bold text-brand-green">{msg.ok}</p>}
       {msg?.err && <p className="text-[12px] font-bold text-danger">{msg.err}</p>}
-    </form>
+    </div>
   );
 }

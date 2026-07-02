@@ -2,7 +2,7 @@
 
 import { randomUUID } from "crypto";
 import { headers } from "next/headers";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { schools, memberships, students, staffProfiles, users, accounts } from "@/db/schema";
@@ -13,8 +13,8 @@ import { generateStudentPassword } from "@/lib/identity/password";
 import { logAudit } from "@/lib/audit";
 import { composeUsername, normalizeIdentifier } from "@/lib/identity/student-id";
 import { generateStaffId } from "@/lib/identity/staff-id";
-import { isLockedOut, recordFailure, clearFailures } from "@/lib/rate-limit";
-import { getOrCreateDeviceId, evaluateStaffDevice } from "@/lib/device-trust";
+import { isLockedOut, recordFailure, clearFailures, LOCKOUT_MINUTES } from "@/lib/rate-limit";
+import { getOrCreateDeviceId, evaluateStaffDevice, readDeviceId, deviceStatus } from "@/lib/device-trust";
 import { encryptSecret } from "@/lib/crypto";
 import { sendSchoolCodeEmail, sendEmail } from "@/lib/email";
 
@@ -274,7 +274,7 @@ export async function studentLogin(input: { schoolCode: string; studentId: strin
   const ip = (h.get("x-forwarded-for")?.split(",")[0] || h.get("x-real-ip") || "unknown").trim();
   const usernameValue = composeUsername(input.schoolCode, input.studentId);
   const keys = [`user:${usernameValue}`, `ip:${ip}`];
-  if (await isLockedOut(keys)) return { error: "Too many attempts. Please wait a few minutes and try again." };
+  if (await isLockedOut(keys)) return { error: `Too many failed attempts. For security this login is locked for ${LOCKOUT_MINUTES} minutes — please try again after that.` };
   try {
     await (auth.api as unknown as { signInUsername(a: { body: { username: string; password: string; rememberMe: boolean }; headers: Headers }): Promise<unknown> })
       .signInUsername({ body: { username: usernameValue, password: input.password, rememberMe: false }, headers: h as unknown as Headers });
@@ -288,29 +288,51 @@ export async function studentLogin(input: { schoolCode: string; studentId: strin
 
 // Staff sign-in with a Staff ID (the Better Auth username) + password - an alternative to email.
 // Same per-account + per-IP lockout as students; uniform error so it doesn't reveal valid IDs.
-export async function staffLogin(input: { staffId: string; password: string }): Promise<{ ok: true } | { error: string }> {
+export async function staffLogin(input: { staffId: string; password: string }): Promise<{ ok: true } | { error: string } | { pending: true; message: string }> {
   const h = await headers();
   const ip = (h.get("x-forwarded-for")?.split(",")[0] || h.get("x-real-ip") || "unknown").trim();
   const usernameValue = normalizeIdentifier(input.staffId);
   const keys = [`user:${usernameValue}`, `ip:${ip}`];
-  if (await isLockedOut(keys)) return { error: "Too many attempts. Please wait a few minutes and try again." };
-  // Block disabled/departed staff before authenticating (offboarding gate).
-  const [prof] = await db.select({ userId: users.id, status: staffProfiles.status, role: memberships.role, schoolId: memberships.schoolId })
-    .from(users).leftJoin(staffProfiles, eq(staffProfiles.userId, users.id)).leftJoin(memberships, eq(memberships.userId, users.id))
+  if (await isLockedOut(keys)) return { error: `Too many failed attempts. For security this login is locked for ${LOCKOUT_MINUTES} minutes — please try again after that.` };
+  // Block disabled/departed staff, and fetch the credential hash to verify the password up front.
+  const [prof] = await db.select({ userId: users.id, status: staffProfiles.status, pwd: accounts.password })
+    .from(users)
+    .leftJoin(staffProfiles, eq(staffProfiles.userId, users.id))
+    .leftJoin(accounts, and(eq(accounts.userId, users.id), eq(accounts.providerId, "credential")))
     .where(eq(users.username, usernameValue)).limit(1);
   if (prof?.status === "left" || prof?.status === "inactive") return { error: "Your access has been disabled. Please contact your school admin." };
-  // Device trust (staff only; admins can sign in anywhere). New devices need admin approval.
+  // Verify the password FIRST (no session is created) so device approval can NEVER trigger — and no
+  // pending device is recorded — for a wrong password.
+  const pctx = (await auth.$context) as unknown as { password: { verify(a: { password: string; hash: string }): Promise<boolean> } };
+  const passwordOk = !!prof?.pwd && (await pctx.password.verify({ password: input.password, hash: prof.pwd }));
+  if (!passwordOk) { await recordFailure(keys); return { error: "Invalid Staff ID or password." }; }
+  await clearFailures(keys);
+  // Password is correct → now enforce staff device trust. A new/pending device pauses here.
   if (prof?.userId) {
     const dec = await evaluateStaffDevice(prof.userId, await getOrCreateDeviceId());
-    if (!dec.allow) return { error: dec.message ?? "This device needs admin approval before you can sign in." };
+    if (!dec.allow) return { pending: true as const, message: dec.message ?? "This device is waiting for admin approval." };
   }
+  // Password + device both cleared → create the session.
   try {
     await (auth.api as unknown as { signInUsername(a: { body: { username: string; password: string; rememberMe: boolean }; headers: Headers }): Promise<unknown> })
       .signInUsername({ body: { username: usernameValue, password: input.password, rememberMe: false }, headers: h as unknown as Headers });
-    await clearFailures(keys);
     return { ok: true };
   } catch {
-    await recordFailure(keys);
-    return { error: "Invalid Staff ID or password." };
+    return { error: "Could not sign you in. Please try again." };
   }
+}
+
+// Lightweight poll for the "waiting for approval" screen: has the admin approved THIS browser's device
+// for the person who just tried to log in? Cheap read (no password), so polling it doesn't trip the
+// login lockout or auth rate limits. Returns only a status for the caller's own device cookie.
+export async function deviceApprovalStatus(identifier: string): Promise<{ status: "approved" | "pending" | "revoked" | "none" }> {
+  const id = (identifier || "").trim();
+  if (!id) return { status: "none" };
+  const [u] = await db.select({ id: users.id }).from(users)
+    .where(or(eq(users.username, normalizeIdentifier(id)), eq(users.email, id.toLowerCase()))).limit(1);
+  if (!u) return { status: "none" };
+  const deviceId = await readDeviceId();
+  if (!deviceId) return { status: "none" };
+  const st = await deviceStatus(u.id, deviceId);
+  return { status: st === "new" ? "none" : st };
 }
